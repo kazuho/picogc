@@ -14,6 +14,11 @@ namespace picogc {
   class gc_root;
   class gc_object;
   
+  struct config {
+    size_t gc_interval_bytes_;
+    static config default_;
+  };
+  
   template <typename T> class member {
     T* obj_;
   public:
@@ -57,9 +62,12 @@ namespace picogc {
     gc_object* old_objs_;
     intptr_t* old_objs_end_;
     std::vector<gc_object*> pending_;
+    size_t bytes_allocated_since_gc_;
+    config* config_;
   public:
-    gc();
+    gc(config* conf = &config::default_);
     ~gc();
+    void* allocate(size_t sz);
     void trigger_gc();
     void _enter();
     void _register(gc_object* obj);
@@ -103,6 +111,8 @@ namespace picogc {
     ~gc_object() {}
     virtual void gc_destroy() = 0;
     virtual void gc_mark(picogc::gc* gc) = 0;
+  public:
+    static void* operator new(size_t sz);
   };
 
   template <typename T> member<T>::member(T* obj) : obj_(obj)
@@ -162,6 +172,16 @@ namespace picogc {
     return obj;
   }
   
+  inline void* gc::allocate(size_t sz)
+  {
+    bytes_allocated_since_gc_ += sz;
+    if (bytes_allocated_since_gc_ >= config_->gc_interval_bytes_) {
+      trigger_gc();
+      bytes_allocated_since_gc_ = 0;
+    }
+    return ::operator new(sz);
+  }
+  
   inline void gc::_register(gc_object* obj)
   {
     obj->next_ = reinterpret_cast<intptr_t>(new_objs_);
@@ -188,10 +208,16 @@ namespace picogc {
     _mark_object(obj);
   }
 
-  inline gc_object::gc_object() {
+  inline gc_object::gc_object()
+  {
     scope::top()->_register(this);
   }
-
+  
+  inline void* gc_object::operator new(size_t sz)
+  {
+    return scope::top()->allocate(sz);
+  }
+  
 }
 
 #endif

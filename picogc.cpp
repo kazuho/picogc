@@ -2,11 +2,16 @@
 
 using namespace picogc;
 
+config config::default_ = {
+  8192 * 1024 // gc_interval_bytes_
+};
+
 gc* scope::top_ = NULL;
 
-gc::gc()
+gc::gc(config* conf)
   : roots_(NULL), stack_(), new_objs_(NULL), old_objs_(NULL),
-    old_objs_end_(reinterpret_cast<intptr_t*>(&old_objs_)), pending_()
+    old_objs_end_(reinterpret_cast<intptr_t*>(&old_objs_)), pending_(),
+    bytes_allocated_since_gc_(0), config_(conf)
 {
 }
 
