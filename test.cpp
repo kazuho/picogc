@@ -36,19 +36,22 @@ picogc::local<Label> doit()
 int main(int, char**)
 {
   picogc::gc gc;
-  picogc::scope scope(&gc);
   
-  picogc::local<Label> ret = doit();
-  
-  printf("triggering GC, b and c will be freed\n");
-  gc.trigger_gc();
-  
-  ret->linked_ = NULL;
-  
-  printf("triggering GC, d will be freed\n");
-  gc.trigger_gc();
-  
-  ret = NULL;
+  {
+    picogc::scope scope(&gc);
+    
+    Label* ret = doit(); // scope.close() preserves the object
+    
+    printf("triggering GC, b and c will be freed\n");
+    gc.trigger_gc();
+    
+    ret->linked_ = NULL;
+    
+    printf("triggering GC, d will be freed\n");
+    gc.trigger_gc();
+    
+    ret = NULL;
+  }
   
   printf("triggering GC, a will be freed\n");
   gc.trigger_gc();

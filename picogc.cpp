@@ -10,6 +10,19 @@ gc::gc()
 {
 }
 
+gc::~gc()
+{
+  assert(roots_ == NULL);
+  // move the new object list to the old object list
+  *old_objs_end_ = reinterpret_cast<intptr_t>(new_objs_);
+  // free all objs
+  for (gc_object* o = old_objs_; o != NULL; ) {
+    gc_object* next = reinterpret_cast<gc_object*>(o->next_ & ~1);
+    o->gc_destroy();
+    o = next;
+  }
+}
+
 void gc::_enter()
 {
   // FIXME KAZUHO check the heuristics whether or not to trigger GC
@@ -65,6 +78,8 @@ void gc::_compact()
   }
   *ref = (intptr_t) NULL;
   old_objs_end_ = ref;
+  
+  // FIXME KAZUHO clear the marks on new objects
 }
 
 void gc::_setup_roots()
