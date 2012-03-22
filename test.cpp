@@ -40,7 +40,7 @@ int main(int, char**)
   {
     picogc::scope scope(&gc);
     
-    picogc::local<Label> ret = doit();
+    Label* ret = doit(); // scope.close() preserves the object
     
     printf("triggering GC, b and c will be freed\n");
     gc.trigger_gc();
