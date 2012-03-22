@@ -24,8 +24,8 @@ picogc::local<Label> doit()
   picogc::local<Label> a = new Label("a");
   picogc::local<Label> b = new Label("b");
   picogc::local<Label> c = new Label("c");
-  //picogc::local<Label> d = new Label("d");
-  a->linked_ = new Label("d");
+  picogc::local<Label> d = new Label("d");
+  a->linked_ = d;
   
   printf("triggering GC, but no objects should be freed\n");
   picogc::scope::top()->trigger_gc();
