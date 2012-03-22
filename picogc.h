@@ -30,10 +30,10 @@ namespace picogc {
   public:
     local(T* obj = NULL);
     local& operator=(T* obj);
-    operator T*() { return *obj_; }
-    operator const T*() const { return *obj_; }
-    T* operator->() { return *obj_; }
-    const T* operator->() const { return *obj_; }
+    operator T*() { return static_cast<T*>(*obj_); }
+    operator const T*() const { return static_cast<const T*>(*obj_); }
+    T* operator->() { return static_cast<T*>(*obj_); }
+    const T* operator->() const { return static_cast<const T*>(*obj_); }
   };
   
   class scope {
@@ -41,9 +41,9 @@ namespace picogc {
     gc* prev_;
     std::vector<gc_object*>::size_type bottom_;
   public:
-    scope(gc* gc);
+    scope(gc* gc = top_);
     ~scope();
-    template <typename T> void close(local<T>& l);
+    template <typename T> local<T> close(local<T>& l);
     static gc* top() {
       assert(top_ != NULL);
       return top_;
@@ -64,8 +64,13 @@ namespace picogc {
     void _enter();
     void _register(gc_object* obj);
     template <typename T> void mark(member<T>& _obj);
+    void _mark_object(gc_object* obj);
     void _register(gc_root* root);
     void _unregister(gc_root* root);
+    gc_object** _allocate_local(gc_object* o) {
+      stack_.push_back(o);
+      return &stack_.back();
+    }
     void _assign_barrier(gc_object*) {} // for concurrent GC
     void _unassign_barrier(gc_object*) {} // for concurrent GC
   protected:
@@ -118,13 +123,12 @@ namespace picogc {
     return *this;
   }
   
-  template <typename T> local<T>::local(T* obj) : obj_(obj)
+  template <typename T> local<T>::local(T* obj)
   {
     gc_object* o = obj; // all GC-able objects should be inheriting gc_object
     gc* gc = scope::top();
     gc->_assign_barrier(o);
-    gc->stack_.push_back(o);
-    obj_ = &gc->stack_.back();
+    obj_ = gc->_allocate_local(o);
   }
   
   template <typename T> local<T>& local<T>::operator=(T* obj)
@@ -151,11 +155,14 @@ namespace picogc {
     top_->_enter();
   }
   
-  template <typename T> void scope::close(local<T>& l) {
-    gc_object** slot = &top_->stack_[bottom_];
-    *slot = l;
-    l.obj_ = slot;
-    top_->stack_.resize(bottom_ + 1);
+  template <typename T> local<T> scope::close(local<T>& obj) {
+    gc_object* o = obj;
+    // destruct the frame, and push the returning value on the prev frame
+    bottom_ += 1;
+    top_->stack_.resize(bottom_);
+    obj.obj_ = &top_->stack_.back();
+    *obj.obj_ = o;
+    return obj;
   }
   
   inline void gc::_register(gc_object* obj)
@@ -165,9 +172,8 @@ namespace picogc {
     // NOTE: not marked
   }
   
-  template <typename T> void gc::mark(member<T>& _obj)
+  inline void gc::_mark_object(gc_object* obj)
   {
-    gc_object* obj = &*_obj; // members should conform this type conversion
     if (obj == NULL)
       return;
     // return if already marked
@@ -177,6 +183,12 @@ namespace picogc {
     obj->next_ |= 1;
     // push to the mark stack
     pending_.push_back(obj);
+  }
+
+  template <typename T> void gc::mark(member<T>& _obj)
+  {
+    gc_object* obj = &*_obj; // members should conform this type conversion
+    _mark_object(obj);
   }
 
   inline gc_object::gc_object() {

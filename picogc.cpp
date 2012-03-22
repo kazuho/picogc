@@ -23,7 +23,9 @@ void gc::trigger_gc()
   *old_objs_end_ = reinterpret_cast<intptr_t>(new_objs_);
   new_objs_ = NULL;
   // setup local
-  pending_ = stack_;
+  for (std::vector<gc_object*>::iterator i = stack_.begin(); i != stack_.end();
+       ++i)
+    _mark_object(*i);
   // setup root
   _setup_roots();
   // mark
@@ -48,7 +50,7 @@ void gc::_compact()
 {
   // collect unmarked objects, as well as clearing the mark of live objects
   intptr_t* ref = reinterpret_cast<intptr_t*>(&old_objs_);
-  for (gc_object* obj = old_objs_; ; ) {
+  for (gc_object* obj = old_objs_; obj != NULL; ) {
     intptr_t next = obj->next_;
     if ((next & 1) != 0) {
       // alive, clear the mark and connect to the list
@@ -70,7 +72,8 @@ void gc::_setup_roots()
   if (roots_ != NULL) {
     gc_root* root = roots_;
     do {
-      pending_.push_back(**root);
+      gc_object* obj = **root;
+      _mark_object(obj);
     } while ((root = root->next_) != roots_);
   }
 }
