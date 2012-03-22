@@ -52,12 +52,12 @@ namespace picogc {
   
   struct gc_emitter {
     virtual ~gc_emitter() {}
-    virtual void gc_start() {}
-    virtual void gc_end(const gc_stats&) {}
-    virtual void mark_start() {}
-    virtual void mark_end() {}
-    virtual void sweep_start() {}
-    virtual void sweep_end() {}
+    virtual void gc_start(gc*) {}
+    virtual void gc_end(gc*, const gc_stats&) {}
+    virtual void mark_start(gc*) {}
+    virtual void mark_end(gc*) {}
+    virtual void sweep_start(gc*) {}
+    virtual void sweep_end(gc*) {}
     static gc_emitter default_;
   };
   

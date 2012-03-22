@@ -63,7 +63,7 @@ void gc::trigger_gc()
 {
   assert(pending_.empty());
   
-  emitter_->gc_start();
+  emitter_->gc_start(this);
   
   // move the new object list to the old object list
   *old_objs_end_ = reinterpret_cast<intptr_t>(new_objs_);
@@ -80,12 +80,12 @@ void gc::trigger_gc()
   // sweep
   _sweep();
   
-  emitter_->gc_end(gc_stats());
+  emitter_->gc_end(this, gc_stats());
 }
 
 void gc::_mark()
 {
-  emitter_->mark_start();
+  emitter_->mark_start(this);
   
   // mark all the objects
   while (! pending_.empty()) {
@@ -96,12 +96,12 @@ void gc::_mark()
     o->gc_mark(this);
   }
   
-  emitter_->mark_end();
+  emitter_->mark_end(this);
 }
 
 void gc::_sweep()
 {
-  emitter_->sweep_start();
+  emitter_->sweep_start(this);
   
   // collect unmarked objects, as well as clearing the mark of live objects
   intptr_t* ref = reinterpret_cast<intptr_t*>(&old_objs_);
@@ -121,7 +121,7 @@ void gc::_sweep()
   *ref = (intptr_t) NULL;
   old_objs_end_ = ref;
   
-  emitter_->sweep_end();
+  emitter_->sweep_end(this);
   
   // FIXME KAZUHO clear the marks on new objects
 }
