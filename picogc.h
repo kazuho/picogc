@@ -2,9 +2,9 @@
 #define picogc_h
 
 extern "C" {
-#include <stddef.h>
 #include <stdint.h>
 }
+#include <cstddef>
 #include <cassert>
 #include <vector>
 
