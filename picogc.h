@@ -66,7 +66,8 @@ namespace picogc {
     template <typename T> void mark(member<T>& _obj);
     void _register(gc_root* root);
     void _unregister(gc_root* root);
-    void _barrier(gc_object*) {} // for concurrent GC
+    void _assign_barrier(gc_object*) {} // for concurrent GC
+    void _unassign_barrier(gc_object*) {} // for concurrent GC
   protected:
     void _setup_roots();
     void _mark();
@@ -103,14 +104,15 @@ namespace picogc {
   template <typename T> member<T>::member(T* obj) : obj_(obj)
   {
     gc_object* o = obj; // all GC-able objects should be inheriting gc_object
-    scope::top()->_barrier(o);
+    scope::top()->_assign_barrier(o);
   }
   
   template <typename T> member<T>& member<T>::operator=(const T* obj)
   {
     if (obj_ != obj) {
       gc_object* o = obj; // all GC-able objects should be inheriting gc_object
-      scope::top()->_barrier(o);
+      scope::top()->_assign_barrier(o);
+      scope::top()->_unassign_barrier(obj_);
       obj_ = obj;
     }
     return *this;
@@ -120,7 +122,7 @@ namespace picogc {
   {
     gc_object* o = obj; // all GC-able objects should be inheriting gc_object
     gc* gc = scope::top();
-    gc->_barrier(o);
+    gc->_assign_barrier(o);
     gc->stack_.push_back(o);
     obj_ = &gc->stack_.back();
   }
@@ -129,7 +131,8 @@ namespace picogc {
   {
     if (*obj_ != obj) {
       gc_object* o = obj; // all GC-able objects should be inheriting gc_object
-      scope::top()->_barrier(o);
+      scope::top()->_assign_barrier(o);
+      scope::top()->_unassign_barrier(*obj_);
       *obj_ = obj;
     }
     return *this;
