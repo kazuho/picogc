@@ -72,11 +72,11 @@ namespace picogc {
     friend class scope;
     gc_root* roots_;
     std::vector<gc_object*> stack_;
-    gc_object* new_objs_;
+    gc_object* new_objs_; // should be TLS for MT support
     gc_object* old_objs_;
     intptr_t* old_objs_end_;
     std::vector<gc_object*> pending_;
-    size_t bytes_allocated_since_gc_;
+    size_t bytes_allocated_since_gc_; // should be TLS for MT support
     config* config_;
     gc_emitter* emitter_;
   public:
