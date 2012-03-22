@@ -51,6 +51,7 @@ namespace picogc {
     template <typename T> friend class local;
     friend class scope;
     gc_root* roots_;
+    // FIXME KAZUHO should use a linked-list of fixed-size buffer
     std::vector<gc_object*> stack_;
     gc_object* new_objs_;
     gc_object* old_objs_;
