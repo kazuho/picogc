@@ -19,6 +19,20 @@ namespace picogc {
     static config default_;
   };
   
+  struct gc_stats {
+  };
+  
+  struct gc_emitter {
+    virtual ~gc_emitter() {}
+    virtual void gc_start() {}
+    virtual void gc_end(const gc_stats&) {}
+    virtual void mark_start() {}
+    virtual void mark_end() {}
+    virtual void sweep_start() {}
+    virtual void sweep_end() {}
+    static gc_emitter default_;
+  };
+  
   template <typename T> class member {
     T* obj_;
   public:
@@ -64,6 +78,7 @@ namespace picogc {
     std::vector<gc_object*> pending_;
     size_t bytes_allocated_since_gc_;
     config* config_;
+    gc_emitter* emitter_;
   public:
     gc(config* conf = &config::default_);
     ~gc();
@@ -80,10 +95,12 @@ namespace picogc {
     void _register_local(gc_object* o) {
       stack_.push_back(o);
     }
+    gc_emitter* emitter() { return emitter_; }
+    void emitter(gc_emitter* emitter) { emitter_ = emitter; }
   protected:
     void _setup_roots();
     void _mark();
-    void _compact();
+    void _sweep();
   };
   
   class gc_root {

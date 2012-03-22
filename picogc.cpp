@@ -6,12 +6,14 @@ config config::default_ = {
   8192 * 1024 // gc_interval_bytes_
 };
 
+gc_emitter gc_emitter::default_;
+
 gc* scope::top_ = NULL;
 
 gc::gc(config* conf)
   : roots_(NULL), stack_(), new_objs_(NULL), old_objs_(NULL),
     old_objs_end_(reinterpret_cast<intptr_t*>(&old_objs_)), pending_(),
-    bytes_allocated_since_gc_(0), config_(conf)
+    bytes_allocated_since_gc_(0), config_(conf), emitter_(&gc_emitter::default_)
 {
 }
 
@@ -37,6 +39,8 @@ void gc::trigger_gc()
 {
   assert(pending_.empty());
   
+  emitter_->gc_start();
+  
   // move the new object list to the old object list
   *old_objs_end_ = reinterpret_cast<intptr_t>(new_objs_);
   new_objs_ = NULL;
@@ -46,14 +50,19 @@ void gc::trigger_gc()
     _mark_object(*i);
   // setup root
   _setup_roots();
+  
   // mark
   _mark();
-  // compact
-  _compact();
+  // sweep
+  _sweep();
+  
+  emitter_->gc_end(gc_stats());
 }
 
 void gc::_mark()
 {
+  emitter_->mark_start();
+  
   // mark all the objects
   while (! pending_.empty()) {
     // pop the target object
@@ -62,10 +71,14 @@ void gc::_mark()
     // request deferred marking of the properties
     o->gc_mark(this);
   }
+  
+  emitter_->mark_end();
 }
 
-void gc::_compact()
+void gc::_sweep()
 {
+  emitter_->sweep_start();
+  
   // collect unmarked objects, as well as clearing the mark of live objects
   intptr_t* ref = reinterpret_cast<intptr_t*>(&old_objs_);
   for (gc_object* obj = old_objs_; obj != NULL; ) {
@@ -83,6 +96,8 @@ void gc::_compact()
   }
   *ref = (intptr_t) NULL;
   old_objs_end_ = ref;
+  
+  emitter_->sweep_end();
   
   // FIXME KAZUHO clear the marks on new objects
 }
