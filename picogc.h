@@ -58,6 +58,7 @@ namespace picogc {
     std::vector<gc_object*> pending_;
   public:
     gc();
+    ~gc();
     void trigger_gc();
     void _enter();
     void _register(gc_object* obj);
