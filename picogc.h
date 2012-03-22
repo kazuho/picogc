@@ -112,7 +112,6 @@ namespace picogc {
     ~gc();
     void* allocate(size_t sz);
     void trigger_gc();
-    void _enter();
     void _register(gc_object* obj);
     template <typename T> void mark(member<T>& _obj);
     void _mark_object(gc_object* obj);
@@ -199,14 +198,12 @@ namespace picogc {
   inline scope::scope(gc* gc) : prev_(top_), frame_(gc->stack_.size())
   {
     top_ = gc;
-    top_->_enter();
   }
   
   inline scope::~scope()
   {
     top_->stack_.resize(frame_);
     top_ = prev_;
-    top_->_enter();
   }
   
   template <typename T> local<T>& scope::close(local<T>& obj) {

@@ -59,11 +59,6 @@ gc::~gc()
   }
 }
 
-void gc::_enter()
-{
-  // FIXME KAZUHO check the heuristics whether or not to trigger GC
-}
-
 void gc::trigger_gc()
 {
   assert(pending_.empty());
