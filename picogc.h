@@ -17,23 +17,19 @@ namespace picogc {
     T* obj_;
   public:
     member(T* obj = NULL);
-    member& operator=(const T* obj);
-    operator T*() { return obj_; }
-    operator const T*() const { return obj_; }
-    T* operator->() { return obj_; }
-    const T* operator->() const { return obj_; }
+    member& operator=(T* obj);
+    operator T*() const { return obj_; }
+    T* operator->() const { return obj_; }
   };
   
   template <typename T> class local {
     friend class scope;
-    gc_object** obj_;
+    std::vector<gc_object*>::size_type slot_;
   public:
     local(T* obj = NULL);
     local& operator=(T* obj);
-    operator T*() { return static_cast<T*>(*obj_); }
-    operator const T*() const { return static_cast<const T*>(*obj_); }
-    T* operator->() { return static_cast<T*>(*obj_); }
-    const T* operator->() const { return static_cast<const T*>(*obj_); }
+    operator T*() const;
+    T* operator->() const { return operator T*(); }
   };
   
   class scope {
@@ -48,10 +44,11 @@ namespace picogc {
       assert(top_ != NULL);
       return top_;
     }
-    static gc_object** _allocate(gc_object* o);
+    static std::vector<gc_object*>::size_type _allocate(gc_object* o);
   };
   
   class gc {
+    template <typename T> friend class local;
     friend class scope;
     gc_root* roots_;
     std::vector<gc_object*> stack_;
@@ -109,7 +106,7 @@ namespace picogc {
     scope::top()->_assign_barrier(o);
   }
   
-  template <typename T> member<T>& member<T>::operator=(const T* obj)
+  template <typename T> member<T>& member<T>::operator=(T* obj)
   {
     if (obj_ != obj) {
       gc_object* o = obj; // all GC-able objects should be inheriting gc_object
@@ -120,29 +117,34 @@ namespace picogc {
     return *this;
   }
   
-  inline gc_object** scope::_allocate(gc_object* o)
+  inline std::vector<gc_object*>::size_type scope::_allocate(gc_object* o)
   {
     top_->stack_.push_back(o);
-    return &top_->stack_.back();
+    return top_->stack_.size() - 1;
   }
   
   template <typename T> local<T>::local(T* obj)
   {
     gc_object* o = obj; // all GC-able objects should be inheriting gc_object
-    gc* gc = scope::top();
-    gc->_assign_barrier(o);
-    obj_ = scope::_allocate(o);
+    scope::top()->_assign_barrier(o);
+    slot_ = scope::_allocate(o);
   }
   
   template <typename T> local<T>& local<T>::operator=(T* obj)
   {
-    if (*obj_ != obj) {
-      gc_object* o = obj; // all GC-able objects should be inheriting gc_object
-      scope::top()->_assign_barrier(o);
-      scope::top()->_unassign_barrier(*obj_);
-      *obj_ = obj;
+    gc_object* o = obj; // all GC-able objects should be inheriting gc_object
+    gc* gc = scope::top();
+    gc_object*& slot = gc->stack_[slot_];
+    if (slot != obj) {
+      gc->_assign_barrier(o);
+      gc->_unassign_barrier(slot);
+      slot = obj;
     }
     return *this;
+  }
+  
+  template <typename T> local<T>::operator T*() const {
+    return static_cast<T*>(scope::top()->stack_[slot_]);
   }
   
   inline scope::scope(gc* gc) : prev_(top_), bottom_(gc->stack_.size())
@@ -161,10 +163,9 @@ namespace picogc {
   template <typename T> local<T> scope::close(local<T>& obj) {
     gc_object* o = obj;
     // destruct the frame, and push the returning value on the prev frame
-    bottom_ += 1;
+    obj.slot_ = bottom_++;
     top_->stack_.resize(bottom_);
-    obj.obj_ = &top_->stack_.back();
-    *obj.obj_ = o;
+    top_->stack_[obj.slot_] = o;
     return obj;
   }
   
