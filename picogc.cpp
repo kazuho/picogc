@@ -65,6 +65,8 @@ void gc::_compact()
   }
   *ref = NULL;
   old_objs_end_ = ref;
+  
+  // FIXME KAZUHO clear the marks on new objects
 }
 
 void gc::_setup_roots()
