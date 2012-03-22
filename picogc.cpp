@@ -76,7 +76,7 @@ void gc::_compact()
     }
     obj = reinterpret_cast<gc_object*>(next);
   }
-  *ref = NULL;
+  *ref = (intptr_t) NULL;
   old_objs_end_ = ref;
   
   // FIXME KAZUHO clear the marks on new objects
