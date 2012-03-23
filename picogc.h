@@ -78,7 +78,8 @@ namespace picogc {
   template <typename T> class member {
     T* obj_;
   public:
-    explicit member(T* obj = NULL);
+    member() {} // slots are zero-filled by the allocator
+    explicit member(T* obj);
     member& operator=(T* obj);
     operator T*() const { return obj_; }
     T* operator->() const { return obj_; }
@@ -165,7 +166,7 @@ namespace picogc {
     gc_object(const gc_object&); // = delete;
     gc_object& operator=(const gc_object&); // = delete;
   protected:
-    gc_object() {}
+    gc_object(bool has_gc_members);
     ~gc_object() {}
     virtual void gc_destroy() = 0;
     virtual void gc_mark(picogc::gc* gc) {}
@@ -236,6 +237,7 @@ namespace picogc {
       bytes_allocated_since_gc_ = 0;
     }
     void* p = ::operator new(sz);
+    memset(p, 0, sz); // GC might walk through the object during construction
     return p;
   }
   
@@ -267,16 +269,17 @@ namespace picogc {
     _mark_object(obj);
   }
 
+  inline gc_object::gc_object(bool has_gc_members)
+  {
+    gc* gc = scope::top();
+    // protect the object by first registering the object to the local list and then to the GC chain
+    gc->_register_local(this);
+    gc->_register(this, has_gc_members);
+  }
+  
   inline void* gc_object::operator new(size_t sz)
   {
     return scope::top()->allocate(sz);
-  }
-  
-  template <typename T> T* new_()
-  {
-    T* t = new T();
-    scope::top()->_register(t, T::HAS_GC_MEMBERS);
-    return t;
   }
   
 }

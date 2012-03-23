@@ -12,13 +12,9 @@ static vector<string> destroyed;
 
 struct Label : public picogc::gc_object {
   typedef picogc::gc_object super;
-  enum { HAS_GC_MEMBERS = 1 };
   string label_;
   picogc::member<Label> linked_;
-  Label* init(const string& label) {
-    label_ = label;
-    return this;
-  }
+  Label(const string& label) : super(true), label_(label), linked_(NULL) {}
   virtual void gc_mark(picogc::gc* gc) {
     super::gc_mark(gc);
     gc->mark(linked_);
@@ -33,10 +29,10 @@ picogc::local<Label> doit()
 {
   picogc::scope scope;
   
-  picogc::local<Label> a = picogc::new_<Label>()->init("a");
-  picogc::local<Label> b = picogc::new_<Label>()->init("b");
-  picogc::local<Label> c = picogc::new_<Label>()->init("c");
-  picogc::local<Label> d = picogc::new_<Label>()->init("d");
+  picogc::local<Label> a = new Label("a");
+  picogc::local<Label> b = new Label("b");
+  picogc::local<Label> c = new Label("c");
+  picogc::local<Label> d = new Label("d");
   a->linked_ = d;
   
   destroyed.clear();
