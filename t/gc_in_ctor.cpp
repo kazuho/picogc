@@ -17,7 +17,7 @@ struct Linked : public picogc::gc_object {
     gc->trigger_gc();
     is(last_stats.collected, 0UL);
     if (num_created++ == 0)
-      linked_ = new Linked;
+      linked_ = picogc::new_<Linked>();
   }
   virtual void gc_mark(picogc::gc* gc) {
     super::gc_mark(gc);
@@ -40,7 +40,12 @@ void test()
   
   gc = new picogc::gc();
   gc->emitter(new Emitter());
-
-  picogc::scope scope(gc);
-  picogc::new_<Linked>();
+  
+  {
+    picogc::scope scope(gc);
+    picogc::new_<Linked>();
+  }
+  
+  gc->trigger_gc();
+  is(last_stats.collected, 2UL);
 }
