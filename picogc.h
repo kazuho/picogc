@@ -272,7 +272,7 @@ namespace picogc {
     return scope::top()->allocate(sz);
   }
   
-  template <typename T> T* gc_new()
+  template <typename T> T* new_()
   {
     T* t = new T();
     scope::top()->_register(t, T::HAS_GC_MEMBERS);

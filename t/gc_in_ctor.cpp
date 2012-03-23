@@ -42,5 +42,5 @@ void test()
   gc->emitter(new Emitter());
 
   picogc::scope scope(gc);
-  picogc::gc_new<Linked>();
+  picogc::new_<Linked>();
 }

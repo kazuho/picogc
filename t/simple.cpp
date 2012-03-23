@@ -33,10 +33,10 @@ picogc::local<Label> doit()
 {
   picogc::scope scope;
   
-  picogc::local<Label> a = picogc::gc_new<Label>()->init("a");
-  picogc::local<Label> b = picogc::gc_new<Label>()->init("b");
-  picogc::local<Label> c = picogc::gc_new<Label>()->init("c");
-  picogc::local<Label> d = picogc::gc_new<Label>()->init("d");
+  picogc::local<Label> a = picogc::new_<Label>()->init("a");
+  picogc::local<Label> b = picogc::new_<Label>()->init("b");
+  picogc::local<Label> c = picogc::new_<Label>()->init("c");
+  picogc::local<Label> d = picogc::new_<Label>()->init("d");
   a->linked_ = d;
   
   destroyed.clear();
