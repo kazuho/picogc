@@ -250,7 +250,8 @@ namespace picogc {
     // mark
     obj->next_ |= FLAG_MARKED;
     // push to the mark stack
-    pending_.push_back(obj);
+    if ((obj->next_ & FLAG_HAS_GC_MEMBERS) != 0)
+      pending_.push_back(obj);
   }
 
   template <typename T> void gc::mark(member<T>& _obj)

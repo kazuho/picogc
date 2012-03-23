@@ -66,7 +66,9 @@ void gc::trigger_gc()
   emitter_->gc_start(this);
   
   // move the new object list to the old object list
-  *old_objs_end_ = reinterpret_cast<intptr_t>(new_objs_);
+  assert((*old_objs_end_ & ~FLAG_MASK) == 0);
+  *old_objs_end_ = reinterpret_cast<intptr_t>(new_objs_)
+    | (*old_objs_end_ & FLAG_HAS_GC_MEMBERS);
   new_objs_ = NULL;
   // setup local
   for (std::vector<gc_object*>::iterator i = stack_.begin(); i != stack_.end();
@@ -93,8 +95,7 @@ void gc::_mark()
     gc_object* o = pending_.back();
     pending_.pop_back();
     // request deferred marking of the properties
-    if ((o->next_ & FLAG_HAS_GC_MEMBERS) != 0)
-      o->gc_mark(this);
+    o->gc_mark(this);
   }
   
   emitter_->mark_end(this);
@@ -118,7 +119,7 @@ void gc::_sweep()
     }
     obj = reinterpret_cast<gc_object*>(next & ~FLAG_MASK);
   }
-  *ref = (intptr_t) NULL;
+  *ref &= FLAG_HAS_GC_MEMBERS;
   old_objs_end_ = ref;
   
   emitter_->sweep_end(this);
