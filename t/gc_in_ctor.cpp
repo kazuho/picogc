@@ -11,13 +11,12 @@ static size_t num_created = 0;
 
 struct Linked : public picogc::gc_object {
   typedef picogc::gc_object super;
-  enum { HAS_GC_MEMBERS = 1 };
   picogc::member<Linked> linked_;
-  Linked() : super() {
+  Linked() : super(true) {
     gc->trigger_gc();
     is(last_stats.collected, 0UL);
     if (num_created++ == 0)
-      linked_ = picogc::new_<Linked>();
+      linked_ = new Linked();
   }
   virtual void gc_mark(picogc::gc* gc) {
     super::gc_mark(gc);
@@ -43,7 +42,7 @@ void test()
   
   {
     picogc::scope scope(gc);
-    picogc::new_<Linked>();
+    new Linked();
   }
   
   gc->trigger_gc();
