@@ -271,7 +271,10 @@ namespace picogc {
 
   inline gc_object::gc_object(bool has_gc_members)
   {
-    scope::top()->_register(this, has_gc_members);
+    gc* gc = scope::top();
+    // protect the object by first registering the object to the local list and then to the GC chain
+    gc->_register_local(this);
+    gc->_register(this, has_gc_members);
   }
   
   inline void* gc_object::operator new(size_t sz)
