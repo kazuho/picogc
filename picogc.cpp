@@ -31,9 +31,7 @@
 
 namespace picogc {
 
-config config::default_ = {
-  8192 * 1024 // gc_interval_bytes_
-};
+config config::default_;
 
 gc_emitter gc_emitter::default_;
 
@@ -64,6 +62,7 @@ void gc::trigger_gc()
   assert(pending_.empty());
   
   emitter_->gc_start(this);
+  gc_stats stats;
   
   // move the new object list to the old object list
   assert((*old_objs_end_ & ~FLAG_MASK) == 0);
@@ -75,17 +74,17 @@ void gc::trigger_gc()
        ++i)
     _mark_object(*i);
   // setup root
-  _setup_roots();
+  _setup_roots(stats);
   
   // mark
-  _mark();
+  _mark(stats);
   // sweep
-  _sweep();
+  _sweep(stats);
   
-  emitter_->gc_end(this, gc_stats());
+  emitter_->gc_end(this, stats);
 }
 
-void gc::_mark()
+void gc::_mark(gc_stats& stats)
 {
   emitter_->mark_start(this);
   
@@ -95,13 +94,14 @@ void gc::_mark()
     gc_object* o = pending_.back();
     pending_.pop_back();
     // request deferred marking of the properties
+    stats.slowly_marked++;
     o->gc_mark(this);
   }
   
   emitter_->mark_end(this);
 }
 
-void gc::_sweep()
+void gc::_sweep(gc_stats& stats)
 {
   emitter_->sweep_start(this);
   
@@ -113,9 +113,11 @@ void gc::_sweep()
       // alive, clear the mark and connect to the list
       *ref = reinterpret_cast<intptr_t>(obj) | (*ref & FLAG_HAS_GC_MEMBERS);
       ref = &obj->next_;
+      stats.not_collected++;
     } else {
       // dead, destroy
       obj->gc_destroy();
+      stats.collected++;
     }
     obj = reinterpret_cast<gc_object*>(next & ~FLAG_MASK);
   }
@@ -127,13 +129,14 @@ void gc::_sweep()
   // FIXME KAZUHO clear the marks on new objects
 }
 
-void gc::_setup_roots()
+void gc::_setup_roots(gc_stats& stats)
 {
   if (roots_ != NULL) {
     gc_root* root = roots_;
     do {
       gc_object* obj = **root;
       _mark_object(obj);
+      stats.on_stack++;
     } while ((root = root->next_) != roots_);
   }
 }

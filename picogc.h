@@ -50,10 +50,18 @@ namespace picogc {
   
   struct config {
     size_t gc_interval_bytes_;
+    config(size_t gc_interval_bytes = 8192 * 1024)
+      : gc_interval_bytes_(gc_interval_bytes) {}
     static config default_;
   };
   
   struct gc_stats {
+    size_t on_stack;
+    size_t slowly_marked;
+    size_t not_collected;
+    size_t collected;
+    gc_stats() : on_stack(0), slowly_marked(0), not_collected(0), collected(0)
+    {}
   };
   
   struct gc_emitter {
@@ -70,7 +78,8 @@ namespace picogc {
   template <typename T> class member {
     T* obj_;
   public:
-    member(T* obj = NULL);
+    member() {} // slots are zero-filled by the allocator
+    explicit member(T* obj);
     member& operator=(T* obj);
     operator T*() const { return obj_; }
     T* operator->() const { return obj_; }
@@ -131,9 +140,9 @@ namespace picogc {
     gc_emitter* emitter() { return emitter_; }
     void emitter(gc_emitter* emitter) { emitter_ = emitter; }
   protected:
-    void _setup_roots();
-    void _mark();
-    void _sweep();
+    void _setup_roots(gc_stats& stats);
+    void _mark(gc_stats& stats);
+    void _sweep(gc_stats& stats);
   };
   
   class gc_root {
