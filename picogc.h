@@ -38,6 +38,12 @@ extern "C" {
 
 namespace picogc {
   
+  enum {
+    FLAG_MARKED = 1,
+    FLAG_HAS_GC_MEMBERS = 2,
+    FLAG_MASK = 3
+  };
+  
   class gc;
   class gc_root;
   class gc_object;
@@ -112,7 +118,7 @@ namespace picogc {
     ~gc();
     void* allocate(size_t sz);
     void trigger_gc();
-    void _register(gc_object* obj);
+    void _register(gc_object* obj, bool has_gc_members);
     template <typename T> void mark(member<T>& _obj);
     void _mark_object(gc_object* obj);
     void _register(gc_root* root);
@@ -151,7 +157,7 @@ namespace picogc {
     gc_object(const gc_object&); // = delete;
     gc_object& operator=(const gc_object&); // = delete;
   protected:
-    gc_object();
+    gc_object(bool has_gc_members);
     ~gc_object() {}
     virtual void gc_destroy() = 0;
     virtual void gc_mark(picogc::gc* gc) {}
@@ -226,9 +232,10 @@ namespace picogc {
     return p;
   }
   
-  inline void gc::_register(gc_object* obj)
+  inline void gc::_register(gc_object* obj, bool has_gc_members)
   {
-    obj->next_ = reinterpret_cast<intptr_t>(new_objs_);
+    obj->next_ = reinterpret_cast<intptr_t>(new_objs_)
+      | (has_gc_members ? FLAG_HAS_GC_MEMBERS : 0);
     new_objs_ = obj;
     // NOTE: not marked
   }
@@ -238,10 +245,10 @@ namespace picogc {
     if (obj == NULL)
       return;
     // return if already marked
-    if ((obj->next_ & 1) != 0)
+    if ((obj->next_ & FLAG_MARKED) != 0)
       return;
     // mark
-    obj->next_ |= 1;
+    obj->next_ |= FLAG_MARKED;
     // push to the mark stack
     pending_.push_back(obj);
   }
@@ -252,9 +259,9 @@ namespace picogc {
     _mark_object(obj);
   }
 
-  inline gc_object::gc_object()
+  inline gc_object::gc_object(bool has_gc_members)
   {
-    scope::top()->_register(this);
+    scope::top()->_register(this, has_gc_members);
   }
   
   inline void* gc_object::operator new(size_t sz)

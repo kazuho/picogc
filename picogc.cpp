@@ -53,7 +53,7 @@ gc::~gc()
   *old_objs_end_ = reinterpret_cast<intptr_t>(new_objs_);
   // free all objs
   for (gc_object* o = old_objs_; o != NULL; ) {
-    gc_object* next = reinterpret_cast<gc_object*>(o->next_ & ~1);
+    gc_object* next = reinterpret_cast<gc_object*>(o->next_ & ~FLAG_MASK);
     o->gc_destroy();
     o = next;
   }
@@ -93,7 +93,8 @@ void gc::_mark()
     gc_object* o = pending_.back();
     pending_.pop_back();
     // request deferred marking of the properties
-    o->gc_mark(this);
+    if ((o->next_ & FLAG_HAS_GC_MEMBERS) != 0)
+      o->gc_mark(this);
   }
   
   emitter_->mark_end(this);
@@ -107,16 +108,16 @@ void gc::_sweep()
   intptr_t* ref = reinterpret_cast<intptr_t*>(&old_objs_);
   for (gc_object* obj = old_objs_; obj != NULL; ) {
     intptr_t next = obj->next_;
-    if ((next & 1) != 0) {
+    if ((next & FLAG_MARKED) != 0) {
       // alive, clear the mark and connect to the list
-      next &= ~1;
-      *ref = reinterpret_cast<intptr_t>(obj);
+      next &= ~FLAG_MARKED;
+      *ref = reinterpret_cast<intptr_t>(obj) | (*ref & FLAG_HAS_GC_MEMBERS);
       ref = &obj->next_;
     } else {
       // dead, destroy
       obj->gc_destroy();
     }
-    obj = reinterpret_cast<gc_object*>(next);
+    obj = reinterpret_cast<gc_object*>(next & ~FLAG_MASK);
   }
   *ref = (intptr_t) NULL;
   old_objs_end_ = ref;
