@@ -1,8 +1,14 @@
-#include <cstdio>
+#! /usr/bin/C
+#option  -cWall -p -cg
+
 #include <string>
 #include "picogc.h"
+#include "picogc.cpp"
+#include "t/test.h"
 
 using namespace std;
+
+static vector<string> destroyed;
 
 struct Label : public picogc::gc_object {
   typedef picogc::gc_object super;
@@ -14,7 +20,7 @@ struct Label : public picogc::gc_object {
     gc->mark(linked_);
   }
   virtual void gc_destroy() {
-    printf("destroying label %s\n", label_.c_str());
+    destroyed.push_back(label_);
     delete this;
   }
 };
@@ -29,14 +35,17 @@ picogc::local<Label> doit()
   picogc::local<Label> d = new Label("d");
   a->linked_ = d;
   
-  printf("triggering GC, but no objects should be freed\n");
+  destroyed.clear();
   picogc::scope::top()->trigger_gc();
+  ok(destroyed.empty(), "no objects destroyed");
   
   return scope.close(a);
 }
 
-int main(int, char**)
+void test()
 {
+  plan(6);
+  
   picogc::gc gc;
   
   {
@@ -44,19 +53,22 @@ int main(int, char**)
     
     Label* ret = doit(); // scope.close() preserves the object
     
-    printf("triggering GC, b and c will be freed\n");
+    destroyed.clear();
     gc.trigger_gc();
+    is(destroyed.size(), 2UL, "two objects destroyed");
     
     ret->linked_ = NULL;
     
-    printf("triggering GC, d will be freed\n");
+    destroyed.clear();
     gc.trigger_gc();
+    is(destroyed.size(), 1UL, "one object destroyed");
+    is(destroyed[0], string("d"), "object d destroyed");
     
     ret = NULL;
   }
   
-  printf("triggering GC, a will be freed\n");
+  destroyed.clear();
   gc.trigger_gc();
-  
-  return 0;
+  is(destroyed.size(), 1UL, "one object destroyed");
+  is(destroyed[0], string("a"), "object a destroyed");
 }
