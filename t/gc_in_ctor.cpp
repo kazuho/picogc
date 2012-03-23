@@ -15,6 +15,7 @@ struct Linked : public picogc::gc_object {
   picogc::member<Linked> linked_;
   Linked() : super() {
     gc->trigger_gc();
+    is(last_stats.collected, 0UL);
     if (num_created++ == 0)
       linked_ = new Linked;
   }
@@ -29,14 +30,13 @@ struct Linked : public picogc::gc_object {
 
 struct Emitter : public picogc::gc_emitter {
   virtual void gc_end(picogc::gc*, const picogc::gc_stats& stats) {
-    printf("%d\n", (int)stats.collected);
     last_stats = stats;
   }
 };
 
 void test()
 {
-  plan(0);
+  plan(2);
   
   gc = new picogc::gc();
   gc->emitter(new Emitter());
