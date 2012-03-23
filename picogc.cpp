@@ -110,7 +110,6 @@ void gc::_sweep()
     intptr_t next = obj->next_;
     if ((next & FLAG_MARKED) != 0) {
       // alive, clear the mark and connect to the list
-      next &= ~FLAG_MARKED;
       *ref = reinterpret_cast<intptr_t>(obj) | (*ref & FLAG_HAS_GC_MEMBERS);
       ref = &obj->next_;
     } else {
