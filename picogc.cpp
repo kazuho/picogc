@@ -29,7 +29,7 @@
 
 #include "picogc.h"
 
-using namespace picogc;
+namespace picogc {
 
 config config::default_ = {
   8192 * 1024 // gc_interval_bytes_
@@ -161,4 +161,6 @@ void gc::_unregister(gc_root* root)
   } else {
     roots_ = NULL;
   }
+}
+
 }
