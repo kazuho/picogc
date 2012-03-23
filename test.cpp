@@ -5,10 +5,12 @@
 using namespace std;
 
 struct Label : public picogc::gc_object {
+  typedef picogc::gc_object super;
   string label_;
   picogc::member<Label> linked_;
   Label(const string& label) : label_(label), linked_(NULL) {}
   virtual void gc_mark(picogc::gc* gc) {
+    super::gc_mark(gc);
     gc->mark(linked_);
   }
   virtual void gc_destroy() {
