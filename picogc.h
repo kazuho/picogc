@@ -154,7 +154,7 @@ namespace picogc {
     gc_object();
     ~gc_object() {}
     virtual void gc_destroy() = 0;
-    virtual void gc_mark(picogc::gc* gc) = 0;
+    virtual void gc_mark(picogc::gc* gc) {}
   public:
     static void* operator new(size_t sz);
   };
@@ -221,7 +221,9 @@ namespace picogc {
       trigger_gc();
       bytes_allocated_since_gc_ = 0;
     }
-    return ::operator new(sz);
+    void* p = ::operator new(sz);
+    memset(p, 0, sz); // GC might walk through the object during construction
+    return p;
   }
   
   inline void gc::_register(gc_object* obj)
