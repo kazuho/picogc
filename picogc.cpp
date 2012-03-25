@@ -116,8 +116,6 @@ void gc::_sweep(gc_stats& stats)
   *ref &= FLAG_HAS_GC_MEMBERS;
   
   emitter_->sweep_end(this);
-  
-  // FIXME KAZUHO clear the marks on new objects
 }
 
 void gc::_setup_roots(gc_stats& stats)
