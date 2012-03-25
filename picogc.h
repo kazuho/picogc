@@ -107,7 +107,7 @@ namespace picogc {
     std::vector<gc_object*> stack_;
     gc_object* obj_head_;
     std::vector<gc_object*> pending_;
-    size_t bytes_allocated_since_gc_; // should be TLS for MT support
+    size_t bytes_allocated_since_gc_;
     config* config_;
     gc_emitter* emitter_;
   public:
