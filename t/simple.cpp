@@ -15,13 +15,12 @@ struct Label : public picogc::gc_object {
   string label_;
   Label* linked_;
   Label(const string& label) : super(true), label_(label) {}
+  virtual ~Label() {
+    destroyed.push_back(label_);
+  }
   virtual void gc_mark(picogc::gc* gc) {
     super::gc_mark(gc);
     gc->mark(linked_);
-  }
-  virtual void gc_destroy() {
-    destroyed.push_back(label_);
-    delete this;
   }
 };
 

@@ -154,8 +154,7 @@ namespace picogc {
     gc_object& operator=(const gc_object&); // = delete;
   protected:
     gc_object(bool has_gc_members = true);
-    ~gc_object() {}
-    virtual void gc_destroy() = 0;
+    virtual ~gc_object() {}
     virtual void gc_mark(picogc::gc* gc) {}
   public:
     static void* operator new(size_t sz);

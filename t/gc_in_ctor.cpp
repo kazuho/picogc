@@ -22,9 +22,6 @@ struct Linked : public picogc::gc_object {
     super::gc_mark(gc);
     gc->mark(linked_);
   }
-  virtual void gc_destroy() {
-    delete this;
-  }
 };
 
 struct Emitter : public picogc::gc_emitter {

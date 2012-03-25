@@ -49,7 +49,7 @@ gc::~gc()
   // free all objs
   for (gc_object* o = obj_head_; o != NULL; ) {
     gc_object* next = reinterpret_cast<gc_object*>(o->next_ & ~FLAG_MASK);
-    o->gc_destroy();
+    delete o;
     o = next;
   }
 }
@@ -108,7 +108,7 @@ void gc::_sweep(gc_stats& stats)
       stats.not_collected++;
     } else {
       // dead, destroy
-      obj->gc_destroy();
+      delete obj;
       stats.collected++;
     }
     obj = reinterpret_cast<gc_object*>(next & ~FLAG_MASK);
