@@ -75,16 +75,6 @@ namespace picogc {
     static gc_emitter default_;
   };
   
-  template <typename T> class member {
-    T* obj_;
-  public:
-    member() {} // slots are zero-filled by the allocator
-    explicit member(T* obj);
-    member& operator=(T* obj);
-    operator T*() const { return obj_; }
-    T* operator->() const { return obj_; }
-  };
-  
   template <typename T> class local {
     T* obj_;
   public:
@@ -128,8 +118,7 @@ namespace picogc {
     void* allocate(size_t sz);
     void trigger_gc();
     void _register(gc_object* obj, bool has_gc_members);
-    template <typename T> void mark(member<T>& _obj);
-    void _mark_object(gc_object* obj);
+    void mark(gc_object* obj);
     void _register(gc_root* root);
     void _unregister(gc_root* root);
     void _assign_barrier(gc_object*) {} // for concurrent GC
@@ -174,23 +163,6 @@ namespace picogc {
     static void* operator new(size_t sz);
   };
 
-  template <typename T> member<T>::member(T* obj) : obj_(obj)
-  {
-    gc_object* o = obj; // all GC-able objects should be inheriting gc_object
-    scope::top()->_assign_barrier(o);
-  }
-  
-  template <typename T> member<T>& member<T>::operator=(T* obj)
-  {
-    if (obj_ != obj) {
-      gc_object* o = obj; // all GC-able objects should be inheriting gc_object
-      scope::top()->_assign_barrier(o);
-      scope::top()->_unassign_barrier(obj_);
-      obj_ = obj;
-    }
-    return *this;
-  }
-  
   template <typename T> local<T>::local(T* obj) : obj_(obj)
   {
     gc* gc = scope::top();
@@ -249,7 +221,7 @@ namespace picogc {
     // NOTE: not marked
   }
   
-  inline void gc::_mark_object(gc_object* obj)
+  inline void gc::mark(gc_object* obj)
   {
     if (obj == NULL)
       return;
@@ -261,12 +233,6 @@ namespace picogc {
     // push to the mark stack
     if ((obj->next_ & FLAG_HAS_GC_MEMBERS) != 0)
       pending_.push_back(obj);
-  }
-
-  template <typename T> void gc::mark(member<T>& _obj)
-  {
-    gc_object* obj = &*_obj; // members should conform this type conversion
-    _mark_object(obj);
   }
 
   inline gc_object::gc_object(bool has_gc_members)

@@ -72,7 +72,7 @@ void gc::trigger_gc()
   // setup local
   for (std::vector<gc_object*>::iterator i = stack_.begin(); i != stack_.end();
        ++i)
-    _mark_object(*i);
+    mark(*i);
   // setup root
   _setup_roots(stats);
   
@@ -135,7 +135,7 @@ void gc::_setup_roots(gc_stats& stats)
     gc_root* root = roots_;
     do {
       gc_object* obj = **root;
-      _mark_object(obj);
+      mark(obj);
       stats.on_stack++;
     } while ((root = root->next_) != roots_);
   }

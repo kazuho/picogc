@@ -13,8 +13,8 @@ static vector<string> destroyed;
 struct Label : public picogc::gc_object {
   typedef picogc::gc_object super;
   string label_;
-  picogc::member<Label> linked_;
-  Label(const string& label) : super(true), label_(label), linked_(NULL) {}
+  Label* linked_;
+  Label(const string& label) : super(true), label_(label) {}
   virtual void gc_mark(picogc::gc* gc) {
     super::gc_mark(gc);
     gc->mark(linked_);
