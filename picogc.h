@@ -105,9 +105,7 @@ namespace picogc {
     friend class scope;
     gc_root* roots_;
     std::vector<gc_object*> stack_;
-    gc_object* new_obj_head_; // should be TLS for MT support
-    gc_object* old_obj_head_;
-    intptr_t* old_obj_tail_;
+    gc_object* obj_head_;
     std::vector<gc_object*> pending_;
     size_t bytes_allocated_since_gc_; // should be TLS for MT support
     config* config_;
@@ -215,9 +213,9 @@ namespace picogc {
   
   inline void gc::_register(gc_object* obj, bool has_gc_members)
   {
-    obj->next_ = reinterpret_cast<intptr_t>(new_obj_head_)
+    obj->next_ = reinterpret_cast<intptr_t>(obj_head_)
       | (has_gc_members ? FLAG_HAS_GC_MEMBERS : 0);
-    new_obj_head_ = obj;
+    obj_head_ = obj;
     // NOTE: not marked
   }
   

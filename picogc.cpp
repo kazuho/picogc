@@ -38,8 +38,7 @@ gc_emitter gc_emitter::default_;
 gc* scope::top_ = NULL;
 
 gc::gc(config* conf)
-  : roots_(NULL), stack_(), new_obj_head_(NULL), old_obj_head_(NULL),
-    old_obj_tail_(reinterpret_cast<intptr_t*>(&old_obj_head_)), pending_(),
+  : roots_(NULL), stack_(), obj_head_(NULL), pending_(),
     bytes_allocated_since_gc_(0), config_(conf), emitter_(&gc_emitter::default_)
 {
 }
@@ -47,10 +46,8 @@ gc::gc(config* conf)
 gc::~gc()
 {
   assert(roots_ == NULL);
-  // move the new object list to the old object list
-  *old_obj_tail_ = reinterpret_cast<intptr_t>(new_obj_head_);
   // free all objs
-  for (gc_object* o = old_obj_head_; o != NULL; ) {
+  for (gc_object* o = obj_head_; o != NULL; ) {
     gc_object* next = reinterpret_cast<gc_object*>(o->next_ & ~FLAG_MASK);
     o->gc_destroy();
     o = next;
@@ -64,11 +61,6 @@ void gc::trigger_gc()
   emitter_->gc_start(this);
   gc_stats stats;
   
-  // move the new object list to the old object list
-  assert((*old_obj_tail_ & ~FLAG_MASK) == 0);
-  *old_obj_tail_ = reinterpret_cast<intptr_t>(new_obj_head_)
-    | (*old_obj_tail_ & FLAG_HAS_GC_MEMBERS);
-  new_obj_head_ = NULL;
   // setup local
   for (std::vector<gc_object*>::iterator i = stack_.begin(); i != stack_.end();
        ++i)
@@ -106,8 +98,8 @@ void gc::_sweep(gc_stats& stats)
   emitter_->sweep_start(this);
   
   // collect unmarked objects, as well as clearing the mark of live objects
-  intptr_t* ref = reinterpret_cast<intptr_t*>(&old_obj_head_);
-  for (gc_object* obj = old_obj_head_; obj != NULL; ) {
+  intptr_t* ref = reinterpret_cast<intptr_t*>(&obj_head_);
+  for (gc_object* obj = obj_head_; obj != NULL; ) {
     intptr_t next = obj->next_;
     if ((next & FLAG_MARKED) != 0) {
       // alive, clear the mark and connect to the list
@@ -122,7 +114,6 @@ void gc::_sweep(gc_stats& stats)
     obj = reinterpret_cast<gc_object*>(next & ~FLAG_MASK);
   }
   *ref &= FLAG_HAS_GC_MEMBERS;
-  old_obj_tail_ = ref;
   
   emitter_->sweep_end(this);
   
