@@ -2,7 +2,6 @@
 #option -cWall -p -cg
 
 #include "picogc.h"
-#include "picogc.cpp"
 #include "t/test.h"
 
 static picogc::gc* gc;

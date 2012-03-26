@@ -3,7 +3,6 @@
 
 #include <string>
 #include "picogc.h"
-#include "picogc.cpp"
 #include "t/test.h"
 
 using namespace std;

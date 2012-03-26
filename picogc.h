@@ -52,7 +52,6 @@ namespace picogc {
     size_t gc_interval_bytes_;
     config(size_t gc_interval_bytes = 8192 * 1024)
       : gc_interval_bytes_(gc_interval_bytes) {}
-    static config default_;
   };
   
   struct gc_stats {
@@ -72,8 +71,18 @@ namespace picogc {
     virtual void mark_end(gc*) {}
     virtual void sweep_start(gc*) {}
     virtual void sweep_end(gc*) {}
-    static gc_emitter default_;
   };
+  
+  // global variables
+  template <bool T> struct _globals {
+    static config default_config;
+    static gc_emitter default_emitter;
+    static gc* _top_scope;
+  };
+  template <bool T> config _globals<T>::default_config;
+  template <bool T> gc_emitter _globals<T>::default_emitter;
+  template <bool T> gc* _globals<T>::_top_scope;
+  typedef _globals<false> globals;
   
   template <typename T> class local {
     T* obj_;
@@ -87,16 +96,15 @@ namespace picogc {
   };
   
   class scope {
-    static gc* top_;
     gc* prev_;
     std::vector<gc_object*>::size_type frame_;
   public:
-    scope(gc* gc = top_);
+    scope(gc* gc = globals::_top_scope);
     ~scope();
     template <typename T> local<T>& close(local<T>& l);
     static gc* top() {
-      assert(top_ != NULL);
-      return top_;
+      assert(globals::_top_scope != NULL);
+      return globals::_top_scope;
     }
   };
   
@@ -110,7 +118,11 @@ namespace picogc {
     config* config_;
     gc_emitter* emitter_;
   public:
-    gc(config* conf = &config::default_);
+    gc(config* conf = &globals::default_config)
+      : roots_(NULL), stack_(), obj_head_(NULL), pending_(),
+	bytes_allocated_since_gc_(0), config_(conf),
+	emitter_(&globals::default_emitter)
+    {}
     ~gc();
     void* allocate(size_t sz);
     void trigger_gc();
@@ -177,23 +189,35 @@ namespace picogc {
     return *this;
   }
   
-  inline scope::scope(gc* gc) : prev_(top_), frame_(gc->stack_.size())
+  inline scope::scope(gc* gc)
+    : prev_(globals::_top_scope), frame_(gc->stack_.size())
   {
-    top_ = gc;
+    globals::_top_scope = gc;
   }
   
   inline scope::~scope()
   {
-    top_->stack_.resize(frame_);
-    top_ = prev_;
+    globals::_top_scope->stack_.resize(frame_);
+    globals::_top_scope = prev_;
   }
   
   template <typename T> local<T>& scope::close(local<T>& obj) {
     gc_object* o = obj;
     // destruct the frame, and push the returning value on the prev frame
-    top_->stack_[frame_] = o;
-    top_->stack_.resize(++frame_);
+    globals::_top_scope->stack_[frame_] = o;
+    globals::_top_scope->stack_.resize(++frame_);
     return obj;
+  }
+  
+  inline gc::~gc()
+  {
+    assert(roots_ == NULL);
+    // free all objs
+    for (gc_object* o = obj_head_; o != NULL; ) {
+      gc_object* next = reinterpret_cast<gc_object*>(o->next_ & ~FLAG_MASK);
+      delete o;
+      o = next;
+    }
   }
   
   inline void* gc::allocate(size_t sz)
@@ -206,6 +230,82 @@ namespace picogc {
     void* p = ::operator new(sz);
     memset(p, 0, sz); // GC might walk through the object during construction
     return p;
+  }
+  
+  inline void gc::_mark(gc_stats& stats)
+  {
+    emitter_->mark_start(this);
+    
+    // mark all the objects
+    while (! pending_.empty()) {
+      // pop the target object
+      gc_object* o = pending_.back();
+      pending_.pop_back();
+      // request deferred marking of the properties
+      stats.slowly_marked++;
+      o->gc_mark(this);
+    }
+    
+    emitter_->mark_end(this);
+  }
+  
+  inline void gc::_sweep(gc_stats& stats)
+  {
+    emitter_->sweep_start(this);
+    
+    // collect unmarked objects, as well as clearing the mark of live objects
+    intptr_t* ref = reinterpret_cast<intptr_t*>(&obj_head_);
+    for (gc_object* obj = obj_head_; obj != NULL; ) {
+      intptr_t next = obj->next_;
+      if ((next & FLAG_MARKED) != 0) {
+	// alive, clear the mark and connect to the list
+	*ref = reinterpret_cast<intptr_t>(obj) | (*ref & FLAG_HAS_GC_MEMBERS);
+	ref = &obj->next_;
+	stats.not_collected++;
+      } else {
+	// dead, destroy
+	delete obj;
+	stats.collected++;
+      }
+      obj = reinterpret_cast<gc_object*>(next & ~FLAG_MASK);
+    }
+    *ref &= FLAG_HAS_GC_MEMBERS;
+    
+    emitter_->sweep_end(this);
+  }
+  
+  inline void gc::_setup_roots(gc_stats& stats)
+  {
+    if (roots_ != NULL) {
+      gc_root* root = roots_;
+      do {
+	gc_object* obj = **root;
+	mark(obj);
+	stats.on_stack++;
+      } while ((root = root->next_) != roots_);
+    }
+  }
+  
+  inline void gc::trigger_gc()
+  {
+    assert(pending_.empty());
+    
+    emitter_->gc_start(this);
+    gc_stats stats;
+    
+    // setup local
+    for (std::vector<gc_object*>::iterator i = stack_.begin();
+	 i != stack_.end(); ++i)
+      mark(*i);
+    // setup root
+    _setup_roots(stats);
+    
+    // mark
+    _mark(stats);
+    // sweep
+    _sweep(stats);
+    
+    emitter_->gc_end(this, stats);
   }
   
   inline void gc::_register(gc_object* obj, bool has_gc_members)
@@ -229,7 +329,33 @@ namespace picogc {
     if ((obj->next_ & FLAG_HAS_GC_MEMBERS) != 0)
       pending_.push_back(obj);
   }
-
+  
+  inline void gc::_register(gc_root* root)
+  {
+    if (roots_ == NULL) {
+      root->next_ = root->prev_ = root;
+      roots_ = root;
+    } else {
+      root->next_ = roots_;
+      root->prev_ = roots_->prev_;
+      root->prev_->next_ = root;
+      root->next_->prev_ = root;
+      roots_ = root;
+    }
+  }
+  
+  inline void gc::_unregister(gc_root* root)
+  {
+    if (root->next_ != root) {
+      root->next_->prev_ = root->prev_;
+      root->prev_->next_ = root->next_;
+      if (root == roots_)
+	roots_ = root->next_;
+    } else {
+      roots_ = NULL;
+    }
+  }
+  
   inline gc_object::gc_object(bool has_gc_members)
   {
     gc* gc = scope::top();
