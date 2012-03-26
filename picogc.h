@@ -119,8 +119,6 @@ namespace picogc {
     void mark(gc_object* obj);
     void _register(gc_root* root);
     void _unregister(gc_root* root);
-    void _assign_barrier(gc_object*) {} // for concurrent GC
-    void _unassign_barrier(gc_object*) {} // for concurrent GC
     void _register_local(gc_object* o) {
       stack_.push_back(o);
     }
@@ -163,7 +161,6 @@ namespace picogc {
   template <typename T> local<T>::local(T* obj) : obj_(obj)
   {
     gc* gc = scope::top();
-    gc->_assign_barrier(obj);
     gc->_register_local(obj);
   }
   
@@ -171,8 +168,6 @@ namespace picogc {
   {
     if (obj_ != obj) {
       gc* gc = scope::top();
-      gc->_unassign_barrier(obj_);
-      gc->_assign_barrier(obj);
       gc->_register_local(obj);
       obj_ = obj;
     }
