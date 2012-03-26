@@ -125,7 +125,7 @@ namespace picogc {
 	emitter_(&globals::default_emitter)
     {}
     ~gc();
-    void* allocate(size_t sz);
+    void* allocate(size_t sz, bool has_gc_members);
     void trigger_gc();
     void _register(gc_object* obj, bool has_gc_members);
     void mark(gc_object* obj);
@@ -169,7 +169,16 @@ namespace picogc {
   public:
     static void* operator new(size_t sz);
   };
-
+  
+  class gc_atomic_object : public gc_object {
+    gc_atomic_object(const gc_atomic_object&); // = delete;
+    gc_atomic_object& operator=(const gc_atomic_object&); // = delete;
+  protected:
+    gc_atomic_object() : gc_object(false) {}
+  public:
+    static void* operator new(size_t sz);
+  };
+  
   template <typename T> local<T>::local(T* obj) : obj_(obj)
   {
     if (obj != NULL) {
@@ -221,7 +230,7 @@ namespace picogc {
     }
   }
   
-  inline void* gc::allocate(size_t sz)
+  inline void* gc::allocate(size_t sz, bool has_gc_members)
   {
     bytes_allocated_since_gc_ += sz;
     if (bytes_allocated_since_gc_ >= config_->gc_interval_bytes_) {
@@ -229,7 +238,8 @@ namespace picogc {
       bytes_allocated_since_gc_ = 0;
     }
     void* p = ::operator new(sz);
-    memset(p, 0, sz); // GC might walk through the object during construction
+    if (has_gc_members)
+      memset(p, 0, sz); // GC might walk through the object during construction
     return p;
   }
   
@@ -367,7 +377,12 @@ namespace picogc {
   
   inline void* gc_object::operator new(size_t sz)
   {
-    return scope::top()->allocate(sz);
+    return scope::top()->allocate(sz, true);
+  }
+
+  inline void* gc_atomic_object::operator new(size_t sz)
+  {
+    return scope::top()->allocate(sz, false);
   }
   
 }
