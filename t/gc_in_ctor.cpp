@@ -32,7 +32,7 @@ struct Emitter : public picogc::gc_emitter {
 
 void test()
 {
-  plan(2);
+  plan(3);
   
   gc = new picogc::gc();
   gc->emitter(new Emitter());
