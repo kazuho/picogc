@@ -168,8 +168,10 @@ namespace picogc {
   template <typename T> local<T>& local<T>::operator=(T* obj)
   {
     if (obj_ != obj) {
-      gc* gc = scope::top();
-      gc->_register_local(obj);
+      if (obj != NULL) {
+	gc* gc = scope::top();
+	gc->_register_local(obj);
+      }
       obj_ = obj;
     }
     return *this;
