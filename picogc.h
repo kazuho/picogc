@@ -33,6 +33,7 @@ extern "C" {
 #include <stdint.h>
 }
 #include <cstddef>
+#include <cstring>
 #include <cassert>
 #include <vector>
 
