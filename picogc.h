@@ -78,9 +78,8 @@ namespace picogc {
   template <typename T> class local {
     T* obj_;
   public:
-    local() : obj_(NULL) {}
+    local(T* obj = NULL);
     local(const local<T>& x) : obj_(x.obj_) {}
-    local(T* obj);
     local& operator=(const local<T>& x) { obj_ = x.obj_; return *this; }
     local& operator=(T* obj);
     operator T*() const { return obj_; }
@@ -160,8 +159,10 @@ namespace picogc {
 
   template <typename T> local<T>::local(T* obj) : obj_(obj)
   {
-    gc* gc = scope::top();
-    gc->_register_local(obj);
+    if (obj != NULL) {
+      gc* gc = scope::top();
+      gc->_register_local(obj);
+    }
   }
   
   template <typename T> local<T>& local<T>::operator=(T* obj)
