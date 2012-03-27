@@ -34,7 +34,7 @@ picogc::local<Label> doit()
   a->linked_ = d;
   
   destroyed.clear();
-  picogc::scope::top()->trigger_gc();
+  picogc::gc::top()->trigger_gc();
   ok(destroyed.empty(), "no objects destroyed");
   
   return scope.close(a);
@@ -45,9 +45,10 @@ void test()
   plan(6);
   
   picogc::gc gc;
+  picogc::gc_scope gc_scope(&gc);
   
   {
-    picogc::scope scope(&gc);
+    picogc::scope scope;
     
     Label* ret = doit(); // scope.close() preserves the object
     

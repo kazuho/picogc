@@ -35,9 +35,10 @@ void test()
   
   gc = new picogc::gc();
   gc->emitter(new Emitter());
+  picogc::gc_scope gc_scope(gc);
   
   {
-    picogc::scope scope(gc);
+    picogc::scope scope;
     new Linked();
   }
   

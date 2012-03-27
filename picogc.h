@@ -96,17 +96,23 @@ namespace picogc {
     T* operator->() const { return obj_; }
   };
   
-  class scope {
+  class gc_scope {
     gc* prev_;
+  public:
+    gc_scope(gc* gc) : prev_(globals::_top_scope) {
+      globals::_top_scope = gc;
+    }
+    ~gc_scope() {
+      globals::_top_scope = prev_;
+    }
+  };
+  
+  class scope {
     std::vector<gc_object*>::size_type frame_;
   public:
-    scope(gc* gc = globals::_top_scope);
+    scope();
     ~scope();
     template <typename T> local<T>& close(local<T>& l);
-    static gc* top() {
-      assert(globals::_top_scope != NULL);
-      return globals::_top_scope;
-    }
   };
   
   class gc {
@@ -136,6 +142,10 @@ namespace picogc {
     }
     gc_emitter* emitter() { return emitter_; }
     void emitter(gc_emitter* emitter) { emitter_ = emitter; }
+    static gc* top() {
+      assert(globals::_top_scope != NULL);
+      return globals::_top_scope;
+    }
   protected:
     void _setup_roots(gc_stats& stats);
     void _mark(gc_stats& stats);
@@ -149,10 +159,10 @@ namespace picogc {
     gc_root* next_;
   public:
     gc_root(gc_object* obj) : obj_(obj) {
-      scope::top()->_register(this);
+      gc::top()->_register(this);
     }
     ~gc_root() {
-      scope::top()->_unregister(this);
+      gc::top()->_unregister(this);
     }
     gc_object* operator*() { return obj_; }
   };
@@ -182,7 +192,7 @@ namespace picogc {
   template <typename T> local<T>::local(T* obj) : obj_(obj)
   {
     if (obj != NULL) {
-      gc* gc = scope::top();
+      gc* gc = gc::top();
       gc->_register_local(obj);
     }
   }
@@ -191,7 +201,7 @@ namespace picogc {
   {
     if (obj_ != obj) {
       if (obj != NULL) {
-	gc* gc = scope::top();
+	gc* gc = gc::top();
 	gc->_register_local(obj);
       }
       obj_ = obj;
@@ -199,23 +209,21 @@ namespace picogc {
     return *this;
   }
   
-  inline scope::scope(gc* gc)
-    : prev_(globals::_top_scope), frame_(gc->stack_.size())
+  inline scope::scope() : frame_(gc::top()->stack_.size())
   {
-    globals::_top_scope = gc;
   }
   
   inline scope::~scope()
   {
-    globals::_top_scope->stack_.resize(frame_);
-    globals::_top_scope = prev_;
+    gc::top()->stack_.resize(frame_);
   }
   
   template <typename T> local<T>& scope::close(local<T>& obj) {
     gc_object* o = obj;
     // destruct the frame, and push the returning value on the prev frame
-    globals::_top_scope->stack_[frame_] = o;
-    globals::_top_scope->stack_.resize(++frame_);
+    gc* gc = gc::top();
+    gc->stack_[frame_] = o;
+    gc->stack_.resize(++frame_);
     return obj;
   }
   
@@ -369,7 +377,7 @@ namespace picogc {
   
   inline gc_object::gc_object(bool has_gc_members)
   {
-    gc* gc = scope::top();
+    gc* gc = gc::top();
     // protect the object by first registering the object to the local list and then to the GC chain
     gc->_register_local(this);
     gc->_register(this, has_gc_members);
@@ -377,12 +385,12 @@ namespace picogc {
   
   inline void* gc_object::operator new(size_t sz)
   {
-    return scope::top()->allocate(sz, true);
+    return gc::top()->allocate(sz, true);
   }
 
   inline void* gc_atomic_object::operator new(size_t sz)
   {
-    return scope::top()->allocate(sz, false);
+    return gc::top()->allocate(sz, false);
   }
   
 }
