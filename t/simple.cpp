@@ -1,5 +1,5 @@
 #! /usr/bin/C
-#option  -cWall -p -cg
+#option -cWall -p -cg
 
 #include <string>
 #include "picogc.h"
@@ -54,13 +54,13 @@ void test()
     
     destroyed.clear();
     gc.trigger_gc();
-    is(destroyed.size(), 2UL, "two objects destroyed");
+    is(destroyed.size(), (size_t) 2UL, "two objects destroyed");
     
     ret->linked_ = NULL;
     
     destroyed.clear();
     gc.trigger_gc();
-    is(destroyed.size(), 1UL, "one object destroyed");
+    is(destroyed.size(), (size_t) 1UL, "one object destroyed");
     is(destroyed[0], string("d"), "object d destroyed");
     
     ret = NULL;
@@ -68,6 +68,6 @@ void test()
   
   destroyed.clear();
   gc.trigger_gc();
-  is(destroyed.size(), 1UL, "one object destroyed");
+  is(destroyed.size(), (size_t) 1UL, "one object destroyed");
   is(destroyed[0], string("a"), "object a destroyed");
 }

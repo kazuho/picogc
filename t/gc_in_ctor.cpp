@@ -13,7 +13,7 @@ struct Linked : public picogc::gc_object {
   Linked* linked_;
   Linked() : super(true) {
     gc->trigger_gc();
-    is(last_stats.collected, 0UL);
+    is(last_stats.collected, (size_t) 0UL);
     if (num_created++ == 0)
       linked_ = new Linked();
   }
@@ -43,5 +43,5 @@ void test()
   }
   
   gc->trigger_gc();
-  is(last_stats.collected, 2UL);
+  is(last_stats.collected, (size_t) 2UL);
 }
