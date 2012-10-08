@@ -178,6 +178,11 @@ namespace picogc {
     virtual void gc_mark(picogc::gc* gc) {}
   public:
     static void* operator new(size_t sz);
+    static void operator delete(void* p);
+  private:
+    // called only by picogc::operator delete(void*)
+    gc_object(gc*) {}
+    static void* operator new(size_t, void* buf) { return buf; }
   };
   
   class gc_atomic_object : public gc_object {
@@ -233,7 +238,8 @@ namespace picogc {
     // free all objs
     for (gc_object* o = obj_head_; o != NULL; ) {
       gc_object* next = reinterpret_cast<gc_object*>(o->next_ & ~FLAG_MASK);
-      delete o;
+      o->~gc_object();
+      ::operator delete(static_cast<void*>(o));
       o = next;
     }
   }
@@ -283,7 +289,8 @@ namespace picogc {
 	stats.not_collected++;
       } else {
 	// dead, destroy
-	delete obj;
+	obj->~gc_object();
+	::operator delete(static_cast<void*>(obj));
 	stats.collected++;
       }
       obj = reinterpret_cast<gc_object*>(next & ~FLAG_MASK);
@@ -386,6 +393,13 @@ namespace picogc {
   inline void* gc_object::operator new(size_t sz)
   {
     return gc::top()->allocate(sz, true);
+  }
+
+  // only called when an exception is raised within ctor
+  inline void gc_object::operator delete(void* p)
+  {
+    // vtbl should point to an empty dtor
+    new (p) gc_object((gc*)NULL);
   }
 
   inline void* gc_atomic_object::operator new(size_t sz)
