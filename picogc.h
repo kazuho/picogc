@@ -119,21 +119,21 @@ namespace picogc {
     friend class scope;
     gc_root* roots_;
     std::vector<gc_object*> stack_;
-    gc_object* obj_head_;
+    gc_object* skip_dtor_obj_head_, * call_dtor_obj_head_;
     std::vector<gc_object*> pending_;
     size_t bytes_allocated_since_gc_;
     config* config_;
     gc_emitter* emitter_;
   public:
     gc(config* conf = &globals::default_config)
-      : roots_(NULL), stack_(), obj_head_(NULL), pending_(),
-	bytes_allocated_since_gc_(0), config_(conf),
-	emitter_(&globals::default_emitter)
+      : roots_(NULL), stack_(), skip_dtor_obj_head_(NULL),
+        call_dtor_obj_head_(NULL), pending_(), bytes_allocated_since_gc_(0),
+	config_(conf), emitter_(&globals::default_emitter)
     {}
     ~gc();
     void* allocate(size_t sz, bool has_gc_members);
     void trigger_gc();
-    void _register(gc_object* obj, bool has_gc_members);
+    void _register(gc_object* obj, bool has_gc_members, bool skip_dtor);
     void mark(gc_object* obj);
     void _register(gc_root* root);
     void _unregister(gc_root* root);
@@ -149,6 +149,8 @@ namespace picogc {
   protected:
     void _setup_roots(gc_stats& stats);
     void _mark(gc_stats& stats);
+    template<bool skip_dtor> void _sweep_list(gc_stats& stats,
+					      gc_object*& head);
     void _sweep(gc_stats& stats);
   };
   
@@ -173,7 +175,7 @@ namespace picogc {
     gc_object(const gc_object&); // = delete;
     gc_object& operator=(const gc_object&); // = delete;
   protected:
-    gc_object(bool has_gc_members = true);
+    gc_object(bool has_gc_members = true, bool skip_dtor = false);
     virtual ~gc_object() {}
     virtual void gc_mark(picogc::gc* gc) {}
   public:
@@ -231,7 +233,12 @@ namespace picogc {
   {
     assert(roots_ == NULL);
     // free all objs
-    for (gc_object* o = obj_head_; o != NULL; ) {
+    for (gc_object* o = skip_dtor_obj_head_; o != NULL; ) {
+      gc_object* next = reinterpret_cast<gc_object*>(o->next_ & ~FLAG_MASK);
+      operator delete(o); // do not invoke dtor
+      o = next;
+    }
+    for (gc_object* o = call_dtor_obj_head_; o != NULL; ) {
       gc_object* next = reinterpret_cast<gc_object*>(o->next_ & ~FLAG_MASK);
       delete o;
       o = next;
@@ -268,13 +275,12 @@ namespace picogc {
     emitter_->mark_end(this);
   }
   
-  inline void gc::_sweep(gc_stats& stats)
+  template<bool skip_dtor> inline void gc::_sweep_list(gc_stats& stats,
+						       gc_object*& head)
   {
-    emitter_->sweep_start(this);
-    
     // collect unmarked objects, as well as clearing the mark of live objects
-    intptr_t* ref = reinterpret_cast<intptr_t*>(&obj_head_);
-    for (gc_object* obj = obj_head_; obj != NULL; ) {
+    intptr_t* ref = reinterpret_cast<intptr_t*>(&head);
+    for (gc_object* obj = head; obj != NULL; ) {
       intptr_t next = obj->next_;
       if ((next & FLAG_MARKED) != 0) {
 	// alive, clear the mark and connect to the list
@@ -283,12 +289,24 @@ namespace picogc {
 	stats.not_collected++;
       } else {
 	// dead, destroy
-	delete obj;
+	if (skip_dtor) {
+	  operator delete(obj);
+	} else {
+	  delete obj;
+	}
 	stats.collected++;
       }
       obj = reinterpret_cast<gc_object*>(next & ~FLAG_MASK);
     }
     *ref &= FLAG_HAS_GC_MEMBERS;
+  }
+
+  inline void gc::_sweep(gc_stats& stats)
+  {
+    emitter_->sweep_start(this);
+
+    _sweep_list<true>(stats, skip_dtor_obj_head_);
+    _sweep_list<false>(stats, call_dtor_obj_head_);
     
     emitter_->sweep_end(this);
   }
@@ -327,11 +345,12 @@ namespace picogc {
     emitter_->gc_end(this, stats);
   }
   
-  inline void gc::_register(gc_object* obj, bool has_gc_members)
+  inline void gc::_register(gc_object* obj, bool has_gc_members, bool skip_dtor)
   {
-    obj->next_ = reinterpret_cast<intptr_t>(obj_head_)
+    gc_object*& head = skip_dtor ? skip_dtor_obj_head_ : call_dtor_obj_head_;
+    obj->next_ = reinterpret_cast<intptr_t>(head)
       | (has_gc_members ? FLAG_HAS_GC_MEMBERS : 0);
-    obj_head_ = obj;
+    head = obj;
     // NOTE: not marked
   }
   
@@ -375,12 +394,12 @@ namespace picogc {
     }
   }
   
-  inline gc_object::gc_object(bool has_gc_members)
+  inline gc_object::gc_object(bool has_gc_members, bool skip_dtor)
   {
     gc* gc = gc::top();
     // protect the object by first registering the object to the local list and then to the GC chain
     gc->_register_local(this);
-    gc->_register(this, has_gc_members);
+    gc->_register(this, has_gc_members, skip_dtor);
   }
   
   inline void* gc_object::operator new(size_t sz)
