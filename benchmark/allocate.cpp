@@ -62,8 +62,11 @@ int main(int argc, char** argv)
     benchmark_t bench;
     rng_t rng;
 
-    for (int i = 0; i < LOOP_CNT; ++i) {
-      new (picogc::IS_ATOMIC) gc_obj_t;
+    for (int i = 0; i < LOOP_CNT / 100; ++i) {
+      picogc::scope scope;
+      for (int j = 0; j < 100; ++j) {
+	new (picogc::IS_ATOMIC) gc_obj_t;
+      }
     }
 
     gc.trigger_gc();
