@@ -13,7 +13,7 @@ struct Label : public picogc::gc_object {
   typedef picogc::gc_object super;
   string label_;
   Label* linked_;
-  Label(const string& label) : super(true), label_(label) {}
+  Label(const string& label) : label_(label) {}
   virtual ~Label() {
     destroyed.push_back(label_);
   }

@@ -17,7 +17,7 @@ struct gc_emitter : public picogc::gc_emitter {
 
 struct K : public picogc::gc_object {
   static size_t dtor_called_;
-  K() : picogc::gc_object(false) {
+  K() {
     throw 123;
   }
   ~K() {

@@ -39,12 +39,18 @@ extern "C" {
 
 namespace picogc {
   
+  // internal flags
   enum {
     FLAG_MARKED = 1,
     FLAG_HAS_GC_MEMBERS = 2,
     FLAG_MASK = 3
   };
   
+  // external flags
+  enum {
+    IS_ATOMIC = 1
+  };
+
   class gc;
   class gc_root;
   class gc_object;
@@ -133,7 +139,7 @@ namespace picogc {
     ~gc();
     void* allocate(size_t sz, bool has_gc_members);
     void trigger_gc();
-    void _register(gc_object* obj, bool has_gc_members);
+    void _register(gc_object* obj);
     void mark(gc_object* obj);
     void _register(gc_root* root);
     void _unregister(gc_root* root);
@@ -173,25 +179,16 @@ namespace picogc {
     gc_object(const gc_object&); // = delete;
     gc_object& operator=(const gc_object&); // = delete;
   protected:
-    gc_object(bool has_gc_members = true);
+    gc_object();
     virtual ~gc_object() {}
     virtual void gc_mark(picogc::gc* gc) {}
   public:
-    static void* operator new(size_t sz);
+    static void* operator new(size_t sz, int flags = 0);
     static void operator delete(void* p);
   private:
     // called only by picogc::operator delete(void*)
     gc_object(gc*) {}
     static void* operator new(size_t, void* buf) { return buf; }
-  };
-  
-  class gc_atomic_object : public gc_object {
-    gc_atomic_object(const gc_atomic_object&); // = delete;
-    gc_atomic_object& operator=(const gc_atomic_object&); // = delete;
-  protected:
-    gc_atomic_object() : gc_object(false) {}
-  public:
-    static void* operator new(size_t sz);
   };
   
   template <typename T> local<T>::local(T* obj) : obj_(obj)
@@ -251,9 +248,10 @@ namespace picogc {
       trigger_gc();
       bytes_allocated_since_gc_ = 0;
     }
-    void* p = ::operator new(sz);
+    gc_object* p = static_cast<gc_object*>(::operator new(sz));
     if (has_gc_members)
       memset(p, 0, sz); // GC might walk through the object during construction
+    p->next_ = has_gc_members ? FLAG_HAS_GC_MEMBERS : 0;
     return p;
   }
   
@@ -334,10 +332,9 @@ namespace picogc {
     emitter_->gc_end(this, stats);
   }
   
-  inline void gc::_register(gc_object* obj, bool has_gc_members)
+  inline void gc::_register(gc_object* obj)
   {
-    obj->next_ = reinterpret_cast<intptr_t>(obj_head_)
-      | (has_gc_members ? FLAG_HAS_GC_MEMBERS : 0);
+    obj->next_ |= reinterpret_cast<intptr_t>(obj_head_);
     obj_head_ = obj;
     // NOTE: not marked
   }
@@ -382,17 +379,17 @@ namespace picogc {
     }
   }
   
-  inline gc_object::gc_object(bool has_gc_members)
+  inline gc_object::gc_object()
   {
     gc* gc = gc::top();
     // protect the object by first registering the object to the local list and then to the GC chain
     gc->_register_local(this);
-    gc->_register(this, has_gc_members);
+    gc->_register(this);
   }
   
-  inline void* gc_object::operator new(size_t sz)
+  inline void* gc_object::operator new(size_t sz, int flags)
   {
-    return gc::top()->allocate(sz, true);
+    return gc::top()->allocate(sz, (flags & IS_ATOMIC) == 0);
   }
 
   // only called when an exception is raised within ctor
@@ -400,11 +397,6 @@ namespace picogc {
   {
     // vtbl should point to an empty dtor
     new (p) gc_object((gc*)NULL);
-  }
-
-  inline void* gc_atomic_object::operator new(size_t sz)
-  {
-    return gc::top()->allocate(sz, false);
   }
   
 }

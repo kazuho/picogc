@@ -11,7 +11,7 @@ static size_t num_created = 0;
 struct Linked : public picogc::gc_object {
   typedef picogc::gc_object super;
   Linked* linked_;
-  Linked() : super(true) {
+  Linked() {
     gc->trigger_gc();
     is(last_stats.collected, (size_t) 0UL);
     if (num_created++ == 0)
