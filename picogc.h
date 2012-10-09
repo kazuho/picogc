@@ -41,9 +41,9 @@ namespace picogc {
   
   // internal flags
   enum {
-    FLAG_MARKED = 1,
-    FLAG_HAS_GC_MEMBERS = 2,
-    FLAG_MASK = 3
+    _FLAG_MARKED = 1,
+    _FLAG_HAS_GC_MEMBERS = 2,
+    _FLAG_MASK = 3
   };
   
   // external flags
@@ -234,7 +234,7 @@ namespace picogc {
     assert(roots_ == NULL);
     // free all objs
     for (gc_object* o = obj_head_; o != NULL; ) {
-      gc_object* next = reinterpret_cast<gc_object*>(o->next_ & ~FLAG_MASK);
+      gc_object* next = reinterpret_cast<gc_object*>(o->next_ & ~_FLAG_MASK);
       o->~gc_object();
       ::operator delete(static_cast<void*>(o));
       o = next;
@@ -251,7 +251,7 @@ namespace picogc {
     gc_object* p = static_cast<gc_object*>(::operator new(sz));
     if (has_gc_members)
       memset(p, 0, sz); // GC might walk through the object during construction
-    p->next_ = has_gc_members ? FLAG_HAS_GC_MEMBERS : 0;
+    p->next_ = has_gc_members ? _FLAG_HAS_GC_MEMBERS : 0;
     return p;
   }
   
@@ -280,9 +280,9 @@ namespace picogc {
     intptr_t* ref = reinterpret_cast<intptr_t*>(&obj_head_);
     for (gc_object* obj = obj_head_; obj != NULL; ) {
       intptr_t next = obj->next_;
-      if ((next & FLAG_MARKED) != 0) {
+      if ((next & _FLAG_MARKED) != 0) {
 	// alive, clear the mark and connect to the list
-	*ref = reinterpret_cast<intptr_t>(obj) | (*ref & FLAG_HAS_GC_MEMBERS);
+	*ref = reinterpret_cast<intptr_t>(obj) | (*ref & _FLAG_HAS_GC_MEMBERS);
 	ref = &obj->next_;
 	stats.not_collected++;
       } else {
@@ -291,9 +291,9 @@ namespace picogc {
 	::operator delete(static_cast<void*>(obj));
 	stats.collected++;
       }
-      obj = reinterpret_cast<gc_object*>(next & ~FLAG_MASK);
+      obj = reinterpret_cast<gc_object*>(next & ~_FLAG_MASK);
     }
-    *ref &= FLAG_HAS_GC_MEMBERS;
+    *ref &= _FLAG_HAS_GC_MEMBERS;
     
     emitter_->sweep_end(this);
   }
@@ -344,12 +344,12 @@ namespace picogc {
     if (obj == NULL)
       return;
     // return if already marked
-    if ((obj->next_ & FLAG_MARKED) != 0)
+    if ((obj->next_ & _FLAG_MARKED) != 0)
       return;
     // mark
-    obj->next_ |= FLAG_MARKED;
+    obj->next_ |= _FLAG_MARKED;
     // push to the mark stack
-    if ((obj->next_ & FLAG_HAS_GC_MEMBERS) != 0)
+    if ((obj->next_ & _FLAG_HAS_GC_MEMBERS) != 0)
       pending_.push_back(obj);
   }
   
