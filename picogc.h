@@ -48,7 +48,8 @@ namespace picogc {
   
   // external flags
   enum {
-    IS_ATOMIC = 1
+    IS_ATOMIC = 1,
+    SKIP_DTOR = 2
   };
 
   class gc;
@@ -125,19 +126,19 @@ namespace picogc {
     friend class scope;
     gc_root* roots_;
     std::vector<gc_object*> stack_;
-    gc_object* obj_head_;
+    gc_object* skip_dtor_obj_head_, * call_dtor_obj_head_;
     std::vector<gc_object*> pending_;
     size_t bytes_allocated_since_gc_;
     config* config_;
     gc_emitter* emitter_;
   public:
     gc(config* conf = &globals::default_config)
-      : roots_(NULL), stack_(), obj_head_(NULL), pending_(),
-	bytes_allocated_since_gc_(0), config_(conf),
-	emitter_(&globals::default_emitter)
+      : roots_(NULL), stack_(), skip_dtor_obj_head_(NULL),
+        call_dtor_obj_head_(NULL), pending_(), bytes_allocated_since_gc_(0),
+	config_(conf), emitter_(&globals::default_emitter)
     {}
     ~gc();
-    void* allocate(size_t sz, bool has_gc_members);
+    void* allocate(size_t sz, int flags);
     void trigger_gc();
     void _register(gc_object* obj);
     void mark(gc_object* obj);
@@ -155,6 +156,8 @@ namespace picogc {
   protected:
     void _setup_roots(gc_stats& stats);
     void _mark(gc_stats& stats);
+    template<bool skip_dtor> void _sweep_list(gc_stats& stats,
+					      gc_object*& head);
     void _sweep(gc_stats& stats);
   };
   
@@ -233,15 +236,20 @@ namespace picogc {
   {
     assert(roots_ == NULL);
     // free all objs
-    for (gc_object* o = obj_head_; o != NULL; ) {
+    for (gc_object* o = skip_dtor_obj_head_; o != NULL; ) {
+      gc_object* next = reinterpret_cast<gc_object*>(o->next_ & ~_FLAG_MASK);
+      ::operator delete(o);
+      o = next;
+    }
+    for (gc_object* o = call_dtor_obj_head_; o != NULL; ) {
       gc_object* next = reinterpret_cast<gc_object*>(o->next_ & ~_FLAG_MASK);
       o->~gc_object();
-      ::operator delete(static_cast<void*>(o));
+      ::operator delete(o);
       o = next;
     }
   }
   
-  inline void* gc::allocate(size_t sz, bool has_gc_members)
+  inline void* gc::allocate(size_t sz, int flags)
   {
     bytes_allocated_since_gc_ += sz;
     if (bytes_allocated_since_gc_ >= config_->gc_interval_bytes_) {
@@ -249,9 +257,9 @@ namespace picogc {
       bytes_allocated_since_gc_ = 0;
     }
     gc_object* p = static_cast<gc_object*>(::operator new(sz));
-    if (has_gc_members)
+    if ((flags & IS_ATOMIC) == 0)
       memset(p, 0, sz); // GC might walk through the object during construction
-    p->next_ = has_gc_members ? _FLAG_HAS_GC_MEMBERS : 0;
+    p->next_ = flags;
     return p;
   }
   
@@ -272,13 +280,12 @@ namespace picogc {
     emitter_->mark_end(this);
   }
   
-  inline void gc::_sweep(gc_stats& stats)
+  template<bool skip_dtor> inline void gc::_sweep_list(gc_stats& stats,
+						       gc_object*& head)
   {
-    emitter_->sweep_start(this);
-    
     // collect unmarked objects, as well as clearing the mark of live objects
-    intptr_t* ref = reinterpret_cast<intptr_t*>(&obj_head_);
-    for (gc_object* obj = obj_head_; obj != NULL; ) {
+    intptr_t* ref = reinterpret_cast<intptr_t*>(&head);
+    for (gc_object* obj = head; obj != NULL; ) {
       intptr_t next = obj->next_;
       if ((next & _FLAG_MARKED) != 0) {
 	// alive, clear the mark and connect to the list
@@ -287,13 +294,23 @@ namespace picogc {
 	stats.not_collected++;
       } else {
 	// dead, destroy
-	obj->~gc_object();
-	::operator delete(static_cast<void*>(obj));
+	if (! skip_dtor) {
+	  obj->~gc_object();
+	}
+	::operator delete(obj);
 	stats.collected++;
       }
       obj = reinterpret_cast<gc_object*>(next & ~_FLAG_MASK);
     }
     *ref &= _FLAG_HAS_GC_MEMBERS;
+  }
+
+  inline void gc::_sweep(gc_stats& stats)
+  {
+    emitter_->sweep_start(this);
+
+    _sweep_list<true>(stats, skip_dtor_obj_head_);
+    _sweep_list<false>(stats, call_dtor_obj_head_);
     
     emitter_->sweep_end(this);
   }
@@ -334,9 +351,14 @@ namespace picogc {
   
   inline void gc::_register(gc_object* obj)
   {
-    obj->next_ |= reinterpret_cast<intptr_t>(obj_head_);
-    obj_head_ = obj;
-    // NOTE: not marked
+    gc_object*& head = (obj->next_ & SKIP_DTOR) != 0
+      ? skip_dtor_obj_head_ : call_dtor_obj_head_;
+    intptr_t next = reinterpret_cast<intptr_t>(head);
+    if ((obj->next_ & IS_ATOMIC) == 0) {
+      next |= _FLAG_HAS_GC_MEMBERS;
+    }
+    obj->next_ = next;
+    head = obj;
   }
   
   inline void gc::mark(gc_object* obj)
@@ -389,7 +411,7 @@ namespace picogc {
   
   inline void* gc_object::operator new(size_t sz, int flags)
   {
-    return gc::top()->allocate(sz, (flags & IS_ATOMIC) == 0);
+    return gc::top()->allocate(sz, flags);
   }
 
   // only called when an exception is raised within ctor
