@@ -23,7 +23,7 @@ struct Label : public picogc::gc_object {
   }
 };
 
-picogc::local<Label> doit()
+Label* doit()
 {
   picogc::scope scope;
   
@@ -37,7 +37,7 @@ picogc::local<Label> doit()
   picogc::gc::top()->trigger_gc();
   ok(destroyed.empty(), "no objects destroyed");
   
-  return scope.close(a);
+  return scope.close(a.get());
 }
 
 void test()
@@ -50,7 +50,7 @@ void test()
   {
     picogc::scope scope;
     
-    Label* ret = doit(); // scope.close() preserves the object
+    picogc::local<Label> ret = doit(); // scope.close() preserves the object
     
     destroyed.clear();
     gc.trigger_gc();

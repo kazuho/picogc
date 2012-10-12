@@ -56,6 +56,88 @@ namespace picogc {
   class gc_root;
   class gc_object;
   
+  template <typename value_type, size_t VALUES_PER_NODE = 2048> class _stack {
+    struct node {
+      value_type values[VALUES_PER_NODE];
+      node *prev; // null if bottom
+    };
+    node* node_;
+    node* reserved_node_;
+    value_type* top_;
+  public:
+    class iterator {
+      node* node_;
+      value_type* cur_;
+    public:
+      iterator(_stack& s) : node_(s.node_), cur_(s.top_) {}
+      value_type* get() {
+	if (cur_ == node_->values) {
+	  if (node_->prev == NULL) {
+	    return NULL;
+	  }
+	  node_ = node_->prev;
+	  cur_ = node_->values + VALUES_PER_NODE;
+	}
+	return --cur_;
+      }
+    };
+    _stack() : node_(new node), reserved_node_(NULL), top_(node_->values) {}
+    ~_stack() {
+      delete reserved_node_;
+      while (node_ != NULL) {
+	node* n = node_->prev;
+	delete node_;
+	node_ = n;
+      }
+    }
+    value_type* push() {
+      if (top_ == node_->values + VALUES_PER_NODE) {
+	node* new_node;
+	if (reserved_node_ != NULL) {
+	  new_node = reserved_node_;
+	  reserved_node_ = NULL;
+	} else {
+	  new_node = new node;
+	}
+	new_node->prev = node_;
+	node_ = new_node;
+	top_ = new_node->values;
+      }
+      return top_++;
+    }
+    value_type* pop() {
+      if (top_ == node_->values) {
+	if (node_->prev == NULL) {
+	  return NULL;
+	}
+	delete reserved_node_;
+	reserved_node_ = node_;
+	node_ = node_->prev;
+	top_ = node_->values + VALUES_PER_NODE;
+      }
+      return --top_;
+    }
+    value_type* preserve() {
+      return top_;
+    }
+    void restore(value_type* slot) {
+      node* n = node_;
+      while (! (n->values <= slot && slot <= n->values + VALUES_PER_NODE)) {
+	if (reserved_node_ == NULL) {
+	  reserved_node_ = n;
+	  n = n->prev;
+	} else {
+	  node* prev = n->prev;
+	  delete n;
+	  n = prev;
+	}
+      }
+      // found
+      node_ = n;
+      top_ = slot;
+    }
+  };
+
   struct config {
     size_t gc_interval_bytes_;
     config(size_t gc_interval_bytes = 8192 * 1024)
@@ -122,14 +204,13 @@ namespace picogc {
   typedef _globals<false> globals;
   
   template <typename T> class local {
-    T* obj_;
+    gc_object** slot_;
   public:
     local(T* obj = NULL);
-    local(const local<T>& x) : obj_(x.obj_) {}
-    local& operator=(const local<T>& x) { obj_ = x.obj_; return *this; }
-    local& operator=(T* obj);
-    operator T*() const { return obj_; }
-    T* operator->() const { return obj_; }
+    local& operator=(T* obj) { *slot_ = obj; return *this; }
+    T* get() const { return static_cast<T*>(*slot_); }
+    operator T*() const { return get(); }
+    T* operator->() const { return get(); }
   };
   
   class gc_scope {
@@ -144,17 +225,17 @@ namespace picogc {
   };
   
   class scope {
-    std::vector<gc_object*>::size_type frame_;
+    gc_object** stack_state_;
   public:
     scope();
     ~scope();
-    template <typename T> local<T>& close(local<T>& l);
+    template <typename T> T* close(T* obj);
   };
   
   class gc {
     friend class scope;
     gc_root* roots_;
-    std::vector<gc_object*> stack_;
+    _stack<gc_object*> stack_;
     gc_object* obj_head_;
     std::vector<gc_object*> pending_;
     size_t bytes_allocated_since_gc_;
@@ -173,8 +254,8 @@ namespace picogc {
     void mark(gc_object* obj);
     void _register(gc_root* root);
     void _unregister(gc_root* root);
-    void _register_local(gc_object* o) {
-      stack_.push_back(o);
+    gc_object** _acquire_local_slot() {
+      return stack_.push();
     }
     gc_emitter* emitter() { return emitter_; }
     void emitter(gc_emitter* emitter) { emitter_ = emitter; }
@@ -221,41 +302,30 @@ namespace picogc {
     static void* operator new(size_t, void* buf) { return buf; }
   };
   
-  template <typename T> local<T>::local(T* obj) : obj_(obj)
+  template <typename T>
+  inline local<T>::local(T* obj) : slot_(gc::top()->_acquire_local_slot())
   {
-    if (obj != NULL) {
-      gc* gc = gc::top();
-      gc->_register_local(obj);
-    }
+    *slot_ = obj;
   }
-  
-  template <typename T> local<T>& local<T>::operator=(T* obj)
-  {
-    if (obj_ != obj) {
-      if (obj != NULL) {
-	gc* gc = gc::top();
-	gc->_register_local(obj);
-      }
-      obj_ = obj;
-    }
-    return *this;
-  }
-  
-  inline scope::scope() : frame_(gc::top()->stack_.size())
+
+  inline scope::scope() : stack_state_(gc::top()->stack_.preserve())
   {
   }
   
   inline scope::~scope()
   {
-    gc::top()->stack_.resize(frame_);
+    if (stack_state_ != NULL) {
+      gc::top()->stack_.restore(stack_state_);
+    }
   }
   
-  template <typename T> local<T>& scope::close(local<T>& obj) {
+  template <typename T> inline T* scope::close(T* obj) {
     gc_object* o = obj;
     // destruct the frame, and push the returning value on the prev frame
     gc* gc = gc::top();
-    gc->stack_[frame_] = o;
-    gc->stack_.resize(++frame_);
+    gc->stack_.restore(stack_state_);
+    *gc->stack_.push() = o;
+    stack_state_ = NULL;
     return obj;
   }
   
@@ -347,10 +417,13 @@ namespace picogc {
     emitter_->gc_start(this);
     gc_stats stats;
     
-    // setup local
-    for (std::vector<gc_object*>::iterator i = stack_.begin();
-	 i != stack_.end(); ++i)
-      mark(*i);
+    { // setup local
+      _stack<gc_object*>::iterator iter(stack_);
+      gc_object** o;
+      while ((o = iter.get()) != NULL)
+	if (*o != NULL)
+	  mark(*o);
+    }
     // setup root
     _setup_roots(stats);
     
@@ -413,7 +486,7 @@ namespace picogc {
   {
     gc* gc = gc::top();
     // protect the object by first registering the object to the local list and then to the GC chain
-    gc->_register_local(this);
+    *gc->_acquire_local_slot() = this; // FIXME
     gc->_register(this);
   }
   
