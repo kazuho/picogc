@@ -250,6 +250,7 @@ namespace picogc {
     ~gc();
     void* allocate(size_t sz, bool has_gc_members);
     void trigger_gc();
+    void may_trigger_gc();
     void _register(gc_object* obj);
     void mark(gc_object* obj);
     void _register(gc_root* root);
@@ -314,9 +315,11 @@ namespace picogc {
   
   inline scope::~scope()
   {
+    gc* gc = gc::top();
     if (stack_state_ != NULL) {
-      gc::top()->stack_.restore(stack_state_);
+      gc->stack_.restore(stack_state_);
     }
+    gc->may_trigger_gc();
   }
   
   template <typename T> inline T* scope::close(T* obj) {
@@ -344,10 +347,6 @@ namespace picogc {
   inline void* gc::allocate(size_t sz, bool has_gc_members)
   {
     bytes_allocated_since_gc_ += sz;
-    if (bytes_allocated_since_gc_ >= config_->gc_interval_bytes_) {
-      trigger_gc();
-      bytes_allocated_since_gc_ = 0;
-    }
     gc_object* p = static_cast<gc_object*>(::operator new(sz));
     if (has_gc_members)
       memset(p, 0, sz); // GC might walk through the object during construction
@@ -435,6 +434,14 @@ namespace picogc {
     emitter_->gc_end(this, stats);
   }
   
+  inline void gc::may_trigger_gc()
+  {
+    if (bytes_allocated_since_gc_ >= config_->gc_interval_bytes_) {
+      trigger_gc();
+      bytes_allocated_since_gc_ = 0;
+    }
+  }
+
   inline void gc::_register(gc_object* obj)
   {
     obj->next_ |= reinterpret_cast<intptr_t>(obj_head_);
