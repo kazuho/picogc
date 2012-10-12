@@ -36,7 +36,7 @@ int main(int argc, char** argv)
     for (int i = 0; i < LOOP_CNT / 100; ++i) {
       picogc::scope scope;
       for (int j = 0; j < 100; ++j) {
-	new (PICOGC::IS_ATOMIC) gc_obj_t;
+	new (picogc::IS_ATOMIC) gc_obj_t;
       }
     }
 
