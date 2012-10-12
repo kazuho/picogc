@@ -209,6 +209,8 @@ namespace picogc {
     gc_object** slot_;
   public:
     local(T* obj = NULL);
+    local(const local<T>& x);
+    local& operator=(const local<T>& x) { *slot_ = *x.slot_; return *this; }
     local& operator=(T* obj) { *slot_ = obj; return *this; }
     T* get() const { return static_cast<T*>(*slot_); }
     operator T*() const { return get(); }
@@ -309,6 +311,13 @@ namespace picogc {
   inline local<T>::local(T* obj) : slot_(gc::top()->_acquire_local_slot())
   {
     *slot_ = obj;
+  }
+
+  template <typename T>
+  inline local<T>::local(const local<T>& x)
+  : slot_(gc::top()->_acquire_local_slot())
+  {
+    *slot_ = *x.slot_;
   }
 
   inline scope::scope() : stack_state_(gc::top()->stack_.preserve())
