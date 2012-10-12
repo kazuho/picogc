@@ -189,7 +189,7 @@ namespace picogc {
       fflush(fp_);
     }
     virtual void sweep_end(gc*) {
-      fprintf(fp_, "sweep_end");
+      fprintf(fp_, "sweep_end\n");
       fflush(fp_);
     }
   };
