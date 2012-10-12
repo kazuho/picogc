@@ -2,6 +2,7 @@
 #option -cWall -p -cg
 
 #include <string>
+#include <vector>
 #include "picogc.h"
 #include "t/test.h"
 

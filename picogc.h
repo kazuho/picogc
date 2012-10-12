@@ -36,7 +36,6 @@ extern "C" {
 #include <cstdio>
 #include <cstring>
 #include <cassert>
-#include <vector>
 
 namespace picogc {
   
@@ -89,6 +88,9 @@ namespace picogc {
 	delete node_;
 	node_ = n;
       }
+    }
+    bool empty() const {
+      return node_->prev == NULL && top_ == node_->values;
     }
     value_type* push() {
       if (top_ == node_->values + VALUES_PER_NODE) {
@@ -237,7 +239,7 @@ namespace picogc {
     gc_root* roots_;
     _stack<gc_object*> stack_;
     gc_object* obj_head_;
-    std::vector<gc_object*> pending_;
+    _stack<gc_object*> pending_;
     size_t bytes_allocated_since_gc_;
     config* config_;
     gc_emitter* emitter_;
@@ -359,13 +361,11 @@ namespace picogc {
     emitter_->mark_start(this);
     
     // mark all the objects
-    while (! pending_.empty()) {
-      // pop the target object
-      gc_object* o = pending_.back();
-      pending_.pop_back();
+    gc_object** slot;
+    while ((slot = pending_.pop()) != NULL) {
       // request deferred marking of the properties
       stats.slowly_marked++;
-      o->gc_mark(this);
+      (*slot)->gc_mark(this);
     }
     
     emitter_->mark_end(this);
@@ -460,7 +460,7 @@ namespace picogc {
     obj->next_ |= _FLAG_MARKED;
     // push to the mark stack
     if ((obj->next_ & _FLAG_HAS_GC_MEMBERS) != 0)
-      pending_.push_back(obj);
+      *pending_.push() = obj;
   }
   
   inline void gc::_register(gc_root* root)
