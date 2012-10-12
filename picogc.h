@@ -429,8 +429,7 @@ namespace picogc {
       _stack<gc_object*>::iterator iter(stack_);
       gc_object** o;
       while ((o = iter.get()) != NULL)
-	if (*o != NULL)
-	  mark(*o);
+	mark(*o);
     }
     // setup root
     _setup_roots(stats);
