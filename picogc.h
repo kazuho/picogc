@@ -255,7 +255,6 @@ namespace picogc {
     void* allocate(size_t sz, bool has_gc_members);
     void trigger_gc();
     void may_trigger_gc();
-    void _register(gc_object* obj);
     void mark(gc_object* obj);
     void _register(gc_root* root);
     void _unregister(gc_root* root);
@@ -295,7 +294,7 @@ namespace picogc {
     gc_object(const gc_object&); // = delete;
     gc_object& operator=(const gc_object&); // = delete;
   protected:
-    gc_object();
+    gc_object() /* next_ is initialized in operator new */ {}
     virtual ~gc_object() {}
     virtual void gc_mark(picogc::gc* gc) {}
   public:
@@ -359,9 +358,15 @@ namespace picogc {
   {
     bytes_allocated_since_gc_ += sz;
     gc_object* p = static_cast<gc_object*>(::operator new(sz));
-    if (has_gc_members)
-      memset(p, 0, sz); // GC might walk through the object during construction
-    p->next_ = has_gc_members ? _FLAG_HAS_GC_MEMBERS : 0;
+    // GC might walk through the object during construction
+    if (has_gc_members) {
+      memset(p, 0, sz);
+    }
+    // register to GC list
+    p->next_ = reinterpret_cast<intptr_t>(obj_head_)
+      | (has_gc_members ? _FLAG_HAS_GC_MEMBERS : 0);
+    obj_head_ = p;
+    *_acquire_local_slot() = p; // FIXME
     return p;
   }
   
@@ -450,13 +455,6 @@ namespace picogc {
     }
   }
 
-  inline void gc::_register(gc_object* obj)
-  {
-    obj->next_ |= reinterpret_cast<intptr_t>(obj_head_);
-    obj_head_ = obj;
-    // NOTE: not marked
-  }
-  
   inline void gc::mark(gc_object* obj)
   {
     if (obj == NULL)
@@ -495,14 +493,6 @@ namespace picogc {
     } else {
       roots_ = NULL;
     }
-  }
-  
-  inline gc_object::gc_object()
-  {
-    gc* gc = gc::top();
-    // protect the object by first registering the object to the local list and then to the GC chain
-    *gc->_acquire_local_slot() = this; // FIXME
-    gc->_register(this);
   }
   
   inline void* gc_object::operator new(size_t sz, int flags)
