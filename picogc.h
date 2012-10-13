@@ -229,7 +229,12 @@ namespace picogc {
   };
   
   class scope {
+    friend class gc;
+    gc_object* new_head_;
+    intptr_t* new_tail_slot_;
+    scope* prev_;
     gc_object** stack_state_;
+    void _destruct(gc* gc);
   public:
     scope();
     ~scope();
@@ -239,6 +244,7 @@ namespace picogc {
   class gc {
     friend class scope;
     gc_root* roots_;
+    scope* scope_;
     _stack<gc_object*> stack_;
     gc_object* obj_head_;
     _stack<gc_object*> pending_;
@@ -247,7 +253,7 @@ namespace picogc {
     gc_emitter* emitter_;
   public:
     gc(config* conf = &globals::default_config)
-      : roots_(NULL), stack_(), obj_head_(NULL), pending_(),
+      : roots_(NULL), scope_(NULL), stack_(), obj_head_(NULL), pending_(),
 	bytes_allocated_since_gc_(0), config_(conf),
 	emitter_(&globals::default_emitter)
     {}
@@ -319,26 +325,38 @@ namespace picogc {
     *slot_ = *x.slot_;
   }
 
-  inline scope::scope() : stack_state_(gc::top()->stack_.preserve())
+  inline scope::scope() : new_head_(NULL), new_tail_slot_(NULL)
   {
+    gc* gc = gc::top();
+    prev_ = gc->scope_;
+    gc->scope_ = this;
+    stack_state_ = gc->stack_.preserve();
   }
   
+  inline void scope::_destruct(gc* gc)
+  {
+    gc->stack_.restore(stack_state_);
+    gc->scope_ = prev_;
+    if (new_head_ != NULL) {
+      *new_tail_slot_ |= reinterpret_cast<intptr_t>(gc->obj_head_);
+      gc->obj_head_ = new_head_;
+    }
+  }
+
   inline scope::~scope()
   {
     gc* gc = gc::top();
-    if (stack_state_ != NULL) {
-      gc->stack_.restore(stack_state_);
-    }
+    if (stack_state_ != NULL)
+      _destruct(gc);
     gc->may_trigger_gc();
   }
   
   template <typename T> inline T* scope::close(T* obj) {
-    gc_object* o = obj;
-    // destruct the frame, and push the returning value on the prev frame
     gc* gc = gc::top();
-    gc->stack_.restore(stack_state_);
-    *gc->stack_.push() = o;
+    // destruct the frame, and push the returning value on the prev frame
+    _destruct(gc);
     stack_state_ = NULL;
+    *gc->stack_.push() = static_cast<gc_object*>(obj);
     return obj;
   }
   
@@ -363,10 +381,12 @@ namespace picogc {
       memset(p, 0, sz);
     }
     // register to GC list
-    p->next_ = reinterpret_cast<intptr_t>(obj_head_)
+    scope* scope = scope_;
+    if (scope->new_head_ == NULL)
+      scope->new_tail_slot_ = &p->next_;
+    p->next_ = reinterpret_cast<intptr_t>(scope->new_head_)
       | (has_gc_members ? _FLAG_HAS_GC_MEMBERS : 0);
-    obj_head_ = p;
-    *_acquire_local_slot() = p; // FIXME
+    scope->new_head_ = p;
     return p;
   }
   
@@ -430,11 +450,22 @@ namespace picogc {
     emitter_->gc_start(this);
     gc_stats stats;
     
+    // setup new
+    for (scope* scope = scope_; scope != NULL; scope = scope->prev_) {
+      for (gc_object* o = scope_->new_head_;
+	   o != NULL;
+	   o = reinterpret_cast<gc_object*>(o->next_ & ~_FLAG_MASK)) {
+	mark(o);
+	stats.on_stack++;
+      }
+    }
     { // setup local
       _stack<gc_object*>::iterator iter(stack_);
       gc_object** o;
-      while ((o = iter.get()) != NULL)
+      while ((o = iter.get()) != NULL) {
 	mark(*o);
+	stats.on_stack++;
+      }
     }
     // setup root
     _setup_roots(stats);
@@ -444,6 +475,16 @@ namespace picogc {
     // sweep
     _sweep(stats);
     
+    // clear the marks in new (as well as count the number)
+    for (scope* scope = scope_; scope != NULL; scope = scope->prev_) {
+      for (gc_object* o = scope_->new_head_;
+	   o != NULL;
+	   o = reinterpret_cast<gc_object*>(o->next_ & ~_FLAG_MASK)) {
+	o->next_ &= ~_FLAG_MARKED;
+	stats.not_collected++;
+      }
+    }
+
     emitter_->gc_end(this, stats);
   }
   
