@@ -31,7 +31,7 @@
 
 #include <cstdio>
 extern "C" {
-#include <sys/time.h>
+#include <sys/resource.h>
 }
 
 // please include picogc.h by yourself
@@ -48,9 +48,9 @@ namespace picogc {
       gc_stats stats;
     } accumulated_;
     static double now() {
-      timeval tv;
-      gettimeofday(&tv, NULL);
-      return tv.tv_sec + tv.tv_usec / 1000000.0;
+      rusage ru;
+      getrusage(RUSAGE_SELF, &ru);
+      return ru.ru_utime.tv_sec + ru.ru_utime.tv_usec / 1000000.0;
     }
   public:
     gc_log_emitter(FILE* fp) : fp_(fp) {
