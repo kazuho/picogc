@@ -214,6 +214,7 @@ namespace picogc {
   
   class gc {
     friend class scope;
+  protected:
     gc_root* roots_;
     scope* scope_;
     _stack<gc_object*> stack_;
@@ -247,7 +248,10 @@ namespace picogc {
   protected:
     void _setup_roots(gc_stats& stats);
     void _mark(gc_stats& stats);
-    void _sweep(gc_stats& stats);
+    virtual void _sweep(gc_stats& stats);
+    void _sweep_prologue(gc_stats& stats);
+    void _sweep_main(gc_object*& head, gc_stats& stats);
+    void _sweep_epilogue(gc_stats& stats);
   };
   
   class gc_root {
@@ -267,20 +271,24 @@ namespace picogc {
   
   class gc_object {
     friend class gc;
-    intptr_t next_;
     gc_object(const gc_object&); // = delete;
     gc_object& operator=(const gc_object&); // = delete;
-  protected:
-    gc_object() /* next_ is initialized in operator new */ {}
+  public:
+    intptr_t __picogc_next_; // intentionally made public
+    gc_object() /* __picogc_next_ is initialized in operator new */ {}
     virtual ~gc_object() {}
     virtual void gc_mark(picogc::gc* gc) {}
+  private:
+    // called only by picogc::operator delete(void*)
+    static void* operator new(size_t, void* buf) {
+      return buf;
+    }
   public:
     static void* operator new(size_t sz, int flags = 0);
     static void operator delete(void* p);
-  private:
-    // called only by picogc::operator delete(void*)
-    gc_object(gc*) {}
-    static void* operator new(size_t, void* buf) { return buf; }
+    static void construct_as_gc_object(gc_object* o) {
+      new (o) gc_object;
+    }
   };
   
   template <typename T>
@@ -336,7 +344,8 @@ namespace picogc {
     assert(roots_ == NULL);
     // free all objs
     for (gc_object* o = obj_head_; o != NULL; ) {
-      gc_object* next = reinterpret_cast<gc_object*>(o->next_ & ~_FLAG_MASK);
+      gc_object* next =
+	reinterpret_cast<gc_object*>(o->__picogc_next_ & ~_FLAG_MASK);
       o->~gc_object();
       ::operator delete(static_cast<void*>(o));
       o = next;
@@ -354,8 +363,8 @@ namespace picogc {
     // register to GC list
     scope* scope = scope_;
     if (scope->new_head_ == NULL)
-      scope->new_tail_slot_ = &p->next_;
-    p->next_ = reinterpret_cast<intptr_t>(scope->new_head_)
+      scope->new_tail_slot_ = &p->__picogc_next_;
+    p->__picogc_next_ = reinterpret_cast<intptr_t>(scope->new_head_)
       | (has_gc_members ? _FLAG_HAS_GC_MEMBERS : 0);
     scope->new_head_ = p;
     return p;
@@ -378,16 +387,26 @@ namespace picogc {
   
   inline void gc::_sweep(gc_stats& stats)
   {
+    _sweep_prologue(stats);
+    _sweep_main(obj_head_, stats);
+    _sweep_epilogue(stats);
+  }
+
+  inline void gc::_sweep_prologue(gc_stats& stats)
+  {
     emitter_->sweep_start(this);
-    
+  }
+
+  inline void gc::_sweep_main(gc_object*& head, gc_stats& stats)
+  {
     // collect unmarked objects, as well as clearing the mark of live objects
-    intptr_t* ref = reinterpret_cast<intptr_t*>(&obj_head_);
-    for (gc_object* obj = obj_head_; obj != NULL; ) {
-      intptr_t next = obj->next_;
+    intptr_t* ref = reinterpret_cast<intptr_t*>(&head);
+    for (gc_object* obj = head; obj != NULL; ) {
+      intptr_t next = obj->__picogc_next_;
       if ((next & _FLAG_MARKED) != 0) {
 	// alive, clear the mark and connect to the list
 	*ref = reinterpret_cast<intptr_t>(obj) | (*ref & _FLAG_HAS_GC_MEMBERS);
-	ref = &obj->next_;
+	ref = &obj->__picogc_next_;
 	stats.not_collected++;
       } else {
 	// dead, destroy
@@ -398,10 +417,13 @@ namespace picogc {
       obj = reinterpret_cast<gc_object*>(next & ~_FLAG_MASK);
     }
     *ref &= _FLAG_HAS_GC_MEMBERS;
-    
-    emitter_->sweep_end(this);
   }
   
+  inline void gc::_sweep_epilogue(gc_stats& stats)
+  {
+    emitter_->sweep_end(this);
+  }
+
   inline void gc::_setup_roots(gc_stats& stats)
   {
     if (roots_ != NULL) {
@@ -425,7 +447,7 @@ namespace picogc {
     for (scope* scope = scope_; scope != NULL; scope = scope->prev_) {
       for (gc_object* o = scope_->new_head_;
 	   o != NULL;
-	   o = reinterpret_cast<gc_object*>(o->next_ & ~_FLAG_MASK)) {
+	   o = reinterpret_cast<gc_object*>(o->__picogc_next_ & ~_FLAG_MASK)) {
 	mark(o);
 	stats.on_stack++;
       }
@@ -450,8 +472,8 @@ namespace picogc {
     for (scope* scope = scope_; scope != NULL; scope = scope->prev_) {
       for (gc_object* o = scope_->new_head_;
 	   o != NULL;
-	   o = reinterpret_cast<gc_object*>(o->next_ & ~_FLAG_MASK)) {
-	o->next_ &= ~_FLAG_MARKED;
+	   o = reinterpret_cast<gc_object*>(o->__picogc_next_ & ~_FLAG_MASK)) {
+	o->__picogc_next_ &= ~_FLAG_MARKED;
 	stats.not_collected++;
       }
     }
@@ -472,12 +494,12 @@ namespace picogc {
     if (obj == NULL)
       return;
     // return if already marked
-    if ((obj->next_ & _FLAG_MARKED) != 0)
+    if ((obj->__picogc_next_ & _FLAG_MARKED) != 0)
       return;
     // mark
-    obj->next_ |= _FLAG_MARKED;
+    obj->__picogc_next_ |= _FLAG_MARKED;
     // push to the mark stack
-    if ((obj->next_ & _FLAG_HAS_GC_MEMBERS) != 0)
+    if ((obj->__picogc_next_ & _FLAG_HAS_GC_MEMBERS) != 0)
       *pending_.push() = obj;
   }
   
@@ -516,7 +538,7 @@ namespace picogc {
   inline void gc_object::operator delete(void* p)
   {
     // vtbl should point to an empty dtor
-    new (p) gc_object((gc*)NULL);
+    construct_as_gc_object(static_cast<gc_object*>(p));
   }
   
 }
