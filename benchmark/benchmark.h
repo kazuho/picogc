@@ -2,7 +2,7 @@
 #define benchmark_h
 
 extern "C" {
-#include <sys/time.h>
+#include <sys/resource.h>
 }
 #include "picogc.h"
 
@@ -15,9 +15,9 @@ public:
     std::cout << name_ << "\t" << (now() - start_) << std::endl;
   }
   static double now() {
-    timeval tv;
-    gettimeofday(&tv, NULL);
-    return tv.tv_sec + tv.tv_usec / 1000000.0;
+    rusage ru;
+    getrusage(RUSAGE_SELF, &ru);
+    return ru.ru_utime.tv_sec + ru.ru_utime.tv_usec / 1000000.0;
   }
 };
 
