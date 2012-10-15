@@ -2,6 +2,7 @@
 #option -cWall -p -cO2 -cDNDEBUG
 
 #include "benchmark/benchmark.h"
+#include "picogc/util.h"
 
 #define MARK_CNT 100000
 #define LOOP_CNT 10000000

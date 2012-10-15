@@ -165,35 +165,6 @@ namespace picogc {
     virtual void sweep_end(gc*) {}
   };
   
-  struct gc_log_emitter : public gc_emitter {
-    FILE* fp_;
-    gc_log_emitter(FILE* fp) : fp_(fp) {}
-    virtual void gc_start(gc*) {
-      fprintf(fp_, "gc_start\n");
-      fflush(fp_);
-    }
-    virtual void gc_end(gc*, const gc_stats& stats) {
-      fprintf(fp_, "gc_end:on_stack=%zd,slowly_marked=%zd,not_collected=%zd,collected=%zd\n", stats.on_stack, stats.slowly_marked, stats.not_collected, stats.collected);
-      fflush(fp_);
-    }
-    virtual void mark_start(gc*) {
-      fprintf(fp_, "mark_start\n");
-      fflush(fp_);
-    }
-    virtual void mark_end(gc*) {
-      fprintf(fp_, "mark_end\n");
-      fflush(fp_);
-    }
-    virtual void sweep_start(gc*) {
-      fprintf(fp_, "sweep_start\n");
-      fflush(fp_);
-    }
-    virtual void sweep_end(gc*) {
-      fprintf(fp_, "sweep_end\n");
-      fflush(fp_);
-    }
-  };
-
   // global variables
   template <bool T> struct _globals {
     static config default_config;
