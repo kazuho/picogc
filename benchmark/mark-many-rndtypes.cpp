@@ -33,9 +33,11 @@ template <size_t SIZE> struct gc_link_tmpl_t : public gc_link_t {
   std::string s_[SIZE];
 };
 
+#define RND() ((rng() >> 8) & 15)
+
 inline malloc_link_t* create_malloc_link(rng_t& rng)
 {
-  switch ((rng() >> 8) & 15) {
+  switch (RND()) {
 #define CASE(n) case n: return new malloc_link_tmpl_t<n>
     CASE(0);
     CASE(1);
@@ -59,7 +61,7 @@ inline malloc_link_t* create_malloc_link(rng_t& rng)
 
 inline gc_link_t* create_gc_link(rng_t& rng)
 {
-  switch ((rng() >> 8) & 15) {
+  switch (RND()) {
 #define CASE(n) case n: return new gc_link_tmpl_t<n>
     CASE(0);
     CASE(1);
