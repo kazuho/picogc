@@ -246,6 +246,9 @@ namespace picogc {
     }
   protected:
     void _setup_roots(gc_stats& stats);
+    void _setup_new(gc_stats& stats);
+    void _clear_marks_in_new(gc_stats& stats);
+    void _setup_local(gc_stats& stats);
     void _mark(gc_stats& stats);
     void _sweep(gc_stats& stats);
   };
@@ -267,11 +270,11 @@ namespace picogc {
   
   class gc_object {
     friend class gc;
-    intptr_t next_;
     gc_object(const gc_object&); // = delete;
     gc_object& operator=(const gc_object&); // = delete;
-  protected:
-    gc_object() /* next_ is initialized in operator new */ {}
+  public:
+    intptr_t _picogc_next_;
+    gc_object() /* _picogc_next_ is initialized in operator new */ {}
     virtual ~gc_object() {}
     virtual void gc_mark(picogc::gc* gc) {}
   public:
@@ -334,7 +337,8 @@ namespace picogc {
     assert(roots_ == NULL);
     // free all objs
     for (gc_object* o = obj_head_; o != NULL; ) {
-      gc_object* next = reinterpret_cast<gc_object*>(o->next_ & ~_FLAG_MASK);
+      gc_object* next =
+	reinterpret_cast<gc_object*>(o->_picogc_next_ & ~_FLAG_MASK);
       o->~gc_object();
       ::operator delete(static_cast<void*>(o));
       o = next;
@@ -352,8 +356,8 @@ namespace picogc {
     // register to GC list
     scope* scope = scope_;
     if (scope->new_head_ == NULL)
-      scope->new_tail_slot_ = &p->next_;
-    p->next_ = reinterpret_cast<intptr_t>(scope->new_head_)
+      scope->new_tail_slot_ = &p->_picogc_next_;
+    p->_picogc_next_ = reinterpret_cast<intptr_t>(scope->new_head_)
       | (has_gc_members ? _FLAG_HAS_GC_MEMBERS : 0);
     scope->new_head_ = p;
     return p;
@@ -381,11 +385,11 @@ namespace picogc {
     // collect unmarked objects, as well as clearing the mark of live objects
     intptr_t* ref = reinterpret_cast<intptr_t*>(&obj_head_);
     for (gc_object* obj = obj_head_; obj != NULL; ) {
-      intptr_t next = obj->next_;
+      intptr_t next = obj->_picogc_next_;
       if ((next & _FLAG_MARKED) != 0) {
 	// alive, clear the mark and connect to the list
 	*ref = reinterpret_cast<intptr_t>(obj) | (*ref & _FLAG_HAS_GC_MEMBERS);
-	ref = &obj->next_;
+	ref = &obj->_picogc_next_;
 	stats.not_collected++;
       } else {
 	// dead, destroy
@@ -412,47 +416,56 @@ namespace picogc {
     }
   }
   
-  inline void gc::trigger_gc()
+  inline void gc::_setup_new(gc_stats& stats)
   {
-    assert(pending_.empty());
-    
-    emitter_->gc_start(this);
-    gc_stats stats;
-    
-    // setup new
     for (scope* scope = scope_; scope != NULL; scope = scope->prev_) {
       for (gc_object* o = scope_->new_head_;
 	   o != NULL;
-	   o = reinterpret_cast<gc_object*>(o->next_ & ~_FLAG_MASK)) {
+	   o = reinterpret_cast<gc_object*>(o->_picogc_next_ & ~_FLAG_MASK)) {
 	mark(o);
 	stats.on_stack++;
       }
     }
-    { // setup local
-      _stack<gc_object*>::iterator iter(stack_);
-      gc_object** o;
-      while ((o = iter.get()) != NULL) {
-	mark(*o);
-	stats.on_stack++;
-      }
-    }
-    // setup root
-    _setup_roots(stats);
-    
-    // mark
-    _mark(stats);
-    // sweep
-    _sweep(stats);
-    
-    // clear the marks in new (as well as count the number)
+  }
+
+  inline void gc::_clear_marks_in_new(gc_stats& stats)
+  {
     for (scope* scope = scope_; scope != NULL; scope = scope->prev_) {
       for (gc_object* o = scope_->new_head_;
 	   o != NULL;
-	   o = reinterpret_cast<gc_object*>(o->next_ & ~_FLAG_MASK)) {
-	o->next_ &= ~_FLAG_MARKED;
+	   o = reinterpret_cast<gc_object*>(o->_picogc_next_ & ~_FLAG_MASK)) {
+	o->_picogc_next_ &= ~_FLAG_MARKED;
 	stats.not_collected++;
       }
     }
+  }
+
+  inline void gc::_setup_local(gc_stats& stats)
+  {
+    _stack<gc_object*>::iterator iter(stack_);
+    gc_object** o;
+    while ((o = iter.get()) != NULL) {
+      mark(*o);
+      stats.on_stack++;
+    }
+  }
+
+  inline void gc::trigger_gc()
+  {
+    assert(pending_.empty());
+
+    emitter_->gc_start(this);
+    gc_stats stats;
+
+    _setup_new(stats);
+    _setup_local(stats);
+    _setup_roots(stats);
+
+    _mark(stats);
+
+    _clear_marks_in_new(stats);
+
+    _sweep(stats);
 
     emitter_->gc_end(this, stats);
   }
@@ -470,12 +483,12 @@ namespace picogc {
     if (obj == NULL)
       return;
     // return if already marked
-    if ((obj->next_ & _FLAG_MARKED) != 0)
+    if ((obj->_picogc_next_ & _FLAG_MARKED) != 0)
       return;
     // mark
-    obj->next_ |= _FLAG_MARKED;
+    obj->_picogc_next_ |= _FLAG_MARKED;
     // push to the mark stack
-    if ((obj->next_ & _FLAG_HAS_GC_MEMBERS) != 0)
+    if ((obj->_picogc_next_ & _FLAG_HAS_GC_MEMBERS) != 0)
       *pending_.push() = obj;
   }
   
