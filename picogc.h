@@ -214,6 +214,7 @@ namespace picogc {
   
   class gc {
     friend class scope;
+  protected:
     gc_root* roots_;
     scope* scope_;
     _stack<gc_object*> stack_;
@@ -230,7 +231,7 @@ namespace picogc {
     {}
     ~gc();
     void* allocate(size_t sz, bool has_gc_members);
-    void trigger_gc();
+    virtual void trigger_gc();
     void may_trigger_gc();
     void mark(gc_object* obj);
     void _register(gc_root* root);
@@ -280,6 +281,9 @@ namespace picogc {
   public:
     static void* operator new(size_t sz, int flags = 0);
     static void operator delete(void* p);
+    static void _construct_as_gc_object(gc_object* buf) {
+      new (buf) gc_object;
+    }
   private:
     static void* operator new(size_t, void* buf) { return buf; }
   };
