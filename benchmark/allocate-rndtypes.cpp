@@ -2,6 +2,9 @@
 #option -cWall -p -cO2
 
 #include "benchmark/benchmark.h"
+#ifdef PICOGC_THREADED
+#include "picogc/threaded.h"
+#endif
 
 #define LOOP_CNT 10000000
 
@@ -43,7 +46,11 @@ int main(int argc, char** argv)
     }
   }
 
+#ifdef PICOGC_THREADED
+  picogc::threaded_gc gc;
+#else
   picogc::gc gc;
+#endif
   picogc::gc_scope gc_scope(&gc);
   { // GC case
     benchmark_t bench("picogc");
