@@ -220,12 +220,14 @@ namespace picogc {
     _stack<gc_object*> stack_;
     gc_object* obj_head_;
     _stack<gc_object*> pending_;
+    gc_object* delete_head_;
     size_t bytes_allocated_since_gc_;
     config* config_;
     gc_emitter* emitter_;
   public:
     gc(config* conf = &globals::default_config)
       : roots_(NULL), scope_(NULL), stack_(), obj_head_(NULL), pending_(),
+	delete_head_(NULL),
 	bytes_allocated_since_gc_(0), config_(conf),
 	emitter_(&globals::default_emitter)
     {}
@@ -251,7 +253,8 @@ namespace picogc {
     void _clear_marks_in_new(gc_stats& stats);
     void _setup_local(gc_stats& stats);
     void _mark(gc_stats& stats);
-    void _sweep(gc_object*& head, gc_stats& stats);
+    void _sweep(gc_object*& obj_head, gc_object*& delete_head, gc_stats& stats);
+    void _delete_pending();
   };
   
   class gc_root {
@@ -351,6 +354,7 @@ namespace picogc {
   
   inline void* gc::allocate(size_t sz, bool has_gc_members)
   {
+    _delete_pending();
     bytes_allocated_since_gc_ += sz;
     gc_object* p = static_cast<gc_object*>(::operator new(sz));
     // GC might walk through the object during construction
@@ -382,13 +386,14 @@ namespace picogc {
     emitter_->mark_end(this);
   }
   
-  inline void gc::_sweep(gc_object*& head, gc_stats& stats)
+  inline void gc::_sweep(gc_object*& obj_head, gc_object*& delete_head,
+			 gc_stats& stats)
   {
     emitter_->sweep_start(this);
     
     // collect unmarked objects, as well as clearing the mark of live objects
-    intptr_t* ref = reinterpret_cast<intptr_t*>(&head);
-    for (gc_object* obj = head; obj != NULL; ) {
+    intptr_t* ref = reinterpret_cast<intptr_t*>(&obj_head);
+    for (gc_object* obj = obj_head; obj != NULL; ) {
       intptr_t next = obj->_picogc_next_;
       if ((next & _FLAG_MARKED) != 0) {
 	// alive, clear the mark and connect to the list
@@ -398,7 +403,8 @@ namespace picogc {
       } else {
 	// dead, destroy
 	obj->~gc_object();
-	::operator delete(static_cast<void*>(obj));
+	obj->_picogc_next_ = reinterpret_cast<intptr_t>(delete_head);
+	delete_head = obj;
 	stats.collected++;
       }
       obj = reinterpret_cast<gc_object*>(next & ~_FLAG_MASK);
@@ -408,6 +414,20 @@ namespace picogc {
     emitter_->sweep_end(this);
   }
   
+  inline void gc::_delete_pending()
+  {
+    if (delete_head_ != NULL) {
+      gc_object* obj = delete_head_;
+      delete_head_ = NULL;
+      do {
+	// there should be no need to mask
+	gc_object* next = reinterpret_cast<gc_object*>(obj->_picogc_next_);
+	::operator delete(obj);
+	obj = next;
+      } while (obj != NULL);
+    }
+  }
+
   inline void gc::_setup_roots(gc_stats& stats)
   {
     if (roots_ != NULL) {
@@ -469,7 +489,7 @@ namespace picogc {
 
     _clear_marks_in_new(stats);
 
-    _sweep(obj_head_, stats);
+    _sweep(obj_head_, delete_head_, stats);
 
     emitter_->gc_end(this, stats);
   }

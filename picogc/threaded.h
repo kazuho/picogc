@@ -66,7 +66,8 @@ namespace picogc {
     }
     void trigger_gc() {
       pthread_mutex_lock(&mutex_);
-      if (gc_state_ != IDLE) printf("gc stall\n");
+      if (gc_state_ != IDLE) printf("gc stall (%p)\n", delete_head_);
+      else printf("not stall\n");
       _send_request(GC_REQUESTED);
       while (gc_state_ == GC_REQUESTED) {
 	pthread_cond_wait(&cond_, &mutex_);
@@ -78,6 +79,7 @@ namespace picogc {
       while (gc_state_ != IDLE) {
 	pthread_cond_wait(&cond_, &mutex_);
       }
+      _delete_pending();
       gc_state_ = request;
       pthread_cond_signal(&cond_);
     }
@@ -112,14 +114,17 @@ namespace picogc {
 	pthread_cond_signal(&cond_);
 	pthread_mutex_unlock(&mutex_);
 	// sweep
-	_sweep(sweep_from, stats);
+	gc_object* delete_head = NULL;
+	_sweep(sweep_from, delete_head, stats);
 	// alter the state
 	pthread_mutex_lock(&mutex_);
+	delete_head_ = delete_head;
 	gc_state_ = IDLE;
 	pthread_cond_signal(&cond_);
 	// end gc
 	emitter_->gc_end(this, stats);
       }
+      pthread_mutex_unlock(&mutex_);
     }
     static void* _gc_thread_start(void* self) {
       static_cast<threaded_gc*>(self)->_gc_thread_start();
