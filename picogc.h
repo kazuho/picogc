@@ -251,7 +251,7 @@ namespace picogc {
     void _clear_marks_in_new(gc_stats& stats);
     void _setup_local(gc_stats& stats);
     void _mark(gc_stats& stats);
-    void _sweep(gc_stats& stats);
+    void _sweep(gc_object*& head, gc_stats& stats);
   };
   
   class gc_root {
@@ -382,13 +382,13 @@ namespace picogc {
     emitter_->mark_end(this);
   }
   
-  inline void gc::_sweep(gc_stats& stats)
+  inline void gc::_sweep(gc_object*& head, gc_stats& stats)
   {
     emitter_->sweep_start(this);
     
     // collect unmarked objects, as well as clearing the mark of live objects
-    intptr_t* ref = reinterpret_cast<intptr_t*>(&obj_head_);
-    for (gc_object* obj = obj_head_; obj != NULL; ) {
+    intptr_t* ref = reinterpret_cast<intptr_t*>(&head);
+    for (gc_object* obj = head; obj != NULL; ) {
       intptr_t next = obj->_picogc_next_;
       if ((next & _FLAG_MARKED) != 0) {
 	// alive, clear the mark and connect to the list
@@ -469,7 +469,7 @@ namespace picogc {
 
     _clear_marks_in_new(stats);
 
-    _sweep(stats);
+    _sweep(obj_head_, stats);
 
     emitter_->gc_end(this, stats);
   }
