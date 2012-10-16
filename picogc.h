@@ -278,8 +278,6 @@ namespace picogc {
     static void* operator new(size_t sz, int flags = 0);
     static void operator delete(void* p);
   private:
-    // called only by picogc::operator delete(void*)
-    gc_object(gc*) {}
     static void* operator new(size_t, void* buf) { return buf; }
   };
   
@@ -516,7 +514,7 @@ namespace picogc {
   inline void gc_object::operator delete(void* p)
   {
     // vtbl should point to an empty dtor
-    new (p) gc_object((gc*)NULL);
+    new (p) gc_object;
   }
   
 }
