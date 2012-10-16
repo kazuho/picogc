@@ -16,14 +16,14 @@ public:
     std::cout << name_ << "\t" << (now() - start_) << std::endl;
   }
   static double now() {
-#if 0
-    rusage ru;
-    getrusage(RUSAGE_SELF, &ru);
-    return ru.ru_utime.tv_sec + ru.ru_utime.tv_usec / 1000000.0;
-#else
+#ifdef PICOGC_THREADED
     timeval tv;
     gettimeofday(&tv, NULL);
     return tv.tv_sec + tv.tv_usec / 1000000.0;
+#else
+    rusage ru;
+    getrusage(RUSAGE_SELF, &ru);
+    return ru.ru_utime.tv_sec + ru.ru_utime.tv_usec / 1000000.0;
 #endif
   }
 };
