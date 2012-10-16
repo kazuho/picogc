@@ -106,7 +106,7 @@ namespace picogc {
 	  gc_object* o =
 	    static_cast<gc_object*>(::operator new(sizeof(gc_object)));
 	  gc_object::_construct_as_gc_object(o);
-	  o->_picogc_next_ = reinterpret_cast<intptr_t>(obj_head_);
+	  // o->_picogc_next_ initialized after sweep
 	  obj_head_ = o;
 	}
 	// notify the main thread that the critical section has ended
@@ -116,6 +116,7 @@ namespace picogc {
 	// sweep
 	gc_object* delete_head = NULL;
 	_sweep(sweep_from, delete_head, stats);
+	obj_head_->_picogc_next_ = reinterpret_cast<intptr_t>(sweep_from);
 	// alter the state
 	pthread_mutex_lock(&mutex_);
 	delete_head_ = delete_head;
