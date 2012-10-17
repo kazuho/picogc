@@ -99,7 +99,6 @@ namespace picogc {
 	_setup_roots(stats);
 	_mark(stats);
 	_clear_marks_in_new(stats);
-	gc_object* sweep_from = obj_head_;
 	{ // insert fake object to obj_head_, to avoid thread conflict
 	  gc_object* o =
 	    static_cast<gc_object*>(::operator new(sizeof(gc_object)));
@@ -107,6 +106,8 @@ namespace picogc {
 	  o->_picogc_next_ = reinterpret_cast<intptr_t>(obj_head_);
 	  obj_head_ = o;
 	}
+	gc_object*& sweep_from =
+	  reinterpret_cast<gc_object*&>(obj_head_->_picogc_next_);
 	// notify the main thread that the critical section has ended
 	gc_state_ = SWEEPING;
 	pthread_cond_signal(&cond_);
