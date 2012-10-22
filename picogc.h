@@ -142,8 +142,12 @@ namespace picogc {
 
   struct config {
     size_t gc_interval_bytes_;
-    config(size_t gc_interval_bytes = 8192 * 1024)
-      : gc_interval_bytes_(gc_interval_bytes) {}
+    config() : gc_interval_bytes_(8 * 1024 * 1024) {}
+    size_t gc_interval_bytes() const { return gc_interval_bytes_; }
+    config& gc_interval_bytes(size_t v) {
+      gc_interval_bytes_ = v;
+      return *this;
+    }
   };
   
   struct gc_stats {
@@ -220,12 +224,12 @@ namespace picogc {
     gc_object* obj_head_;
     _stack<gc_object*> pending_;
     size_t bytes_allocated_since_gc_;
-    config* config_;
+    config conf_;
     gc_emitter* emitter_;
   public:
-    gc(config* conf = &globals::default_config)
+    gc(const config& conf = config())
       : roots_(NULL), scope_(NULL), stack_(), obj_head_(NULL), pending_(),
-	bytes_allocated_since_gc_(0), config_(conf),
+	bytes_allocated_since_gc_(0), conf_(conf),
 	emitter_(&globals::default_emitter)
     {}
     ~gc();
@@ -459,7 +463,7 @@ namespace picogc {
   
   inline void gc::may_trigger_gc()
   {
-    if (bytes_allocated_since_gc_ >= config_->gc_interval_bytes_) {
+    if (bytes_allocated_since_gc_ >= conf_.gc_interval_bytes()) {
       trigger_gc();
       bytes_allocated_since_gc_ = 0;
     }
