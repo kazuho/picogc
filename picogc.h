@@ -279,8 +279,10 @@ namespace picogc {
     virtual ~gc_object() {}
     virtual void gc_mark(picogc::gc* gc) {}
   public:
-    static void* operator new(size_t sz, int flags = 0);
+    static void* operator new(size_t sz);
+    static void* operator new(size_t sz, int flags);
     static void operator delete(void* p);
+    static void operator delete(void* p, int flags);
   private:
     static void* operator new(size_t, void* buf) { return buf; }
   };
@@ -508,7 +510,12 @@ namespace picogc {
       roots_ = NULL;
     }
   }
-  
+
+  inline void* gc_object::operator new(size_t sz)
+  {
+    return gc::top()->allocate(sz, true /* be pessimistic */);
+  }
+
   inline void* gc_object::operator new(size_t sz, int flags)
   {
     return gc::top()->allocate(sz, (flags & IS_ATOMIC) == 0);
@@ -519,6 +526,11 @@ namespace picogc {
   {
     // vtbl should point to an empty dtor
     new (p) gc_object;
+  }
+
+  inline void gc_object::operator delete(void* p, int)
+  {
+    gc_object::operator delete(p);
   }
   
 }

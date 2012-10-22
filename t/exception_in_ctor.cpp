@@ -43,13 +43,18 @@ void test()
     } catch (...) {
     }
     
+    try {
+      new (picogc::IS_ATOMIC) K();
+    } catch (...) {
+    }
+
     gc.trigger_gc();
-    is(gc_stats.not_collected, (size_t)1);
+    is(gc_stats.not_collected, (size_t)2);
     is(gc_stats.collected, (size_t)0);
   }
   
   gc.trigger_gc();
   is(gc_stats.not_collected, (size_t)0);
-  is(gc_stats.collected, (size_t)1);
+  is(gc_stats.collected, (size_t)2);
   is(K::dtor_called_, (size_t)0);
 }
