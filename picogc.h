@@ -54,7 +54,6 @@ namespace picogc {
   };
 
   class gc;
-  class gc_root;
   class gc_object;
   
   template <typename value_type, size_t VALUES_PER_NODE = 2048> class _stack {
@@ -220,7 +219,6 @@ namespace picogc {
   
   class gc {
     friend class scope;
-    gc_root* roots_;
     scope* scope_;
     _stack<gc_object*> stack_;
     gc_object* obj_head_;
@@ -230,7 +228,7 @@ namespace picogc {
     gc_emitter* emitter_;
   public:
     gc(const config& conf = config())
-      : roots_(NULL), scope_(NULL), stack_(), obj_head_(NULL), pending_(),
+      : scope_(NULL), stack_(), obj_head_(NULL), pending_(),
 	bytes_allocated_since_gc_(0), conf_(conf),
 	emitter_(&globals::default_emitter)
     {}
@@ -239,8 +237,6 @@ namespace picogc {
     void trigger_gc();
     void may_trigger_gc();
     void mark(gc_object* obj);
-    void _register(gc_root* root);
-    void _unregister(gc_root* root);
     gc_object** _acquire_local_slot() {
       return stack_.push();
     }
@@ -251,24 +247,9 @@ namespace picogc {
       return globals::_top_scope;
     }
   protected:
-    void _setup_roots(gc_stats& stats);
+    virtual void _setup_roots(gc_stats& stats);
     void _mark(gc_stats& stats);
     void _sweep(gc_stats& stats);
-  };
-  
-  class gc_root {
-    friend class gc;
-    gc_object* obj_;
-    gc_root* prev_;
-    gc_root* next_;
-  public:
-    gc_root(gc_object* obj) : obj_(obj) {
-      gc::top()->_register(this);
-    }
-    ~gc_root() {
-      gc::top()->_unregister(this);
-    }
-    gc_object* operator*() { return obj_; }
   };
   
   class gc_object {
@@ -339,7 +320,6 @@ namespace picogc {
   
   inline gc::~gc()
   {
-    assert(roots_ == NULL);
     // free all objs
     for (gc_object* o = obj_head_; o != NULL; ) {
       gc_object* next = reinterpret_cast<gc_object*>(o->next_ & ~_FLAG_MASK);
@@ -419,14 +399,7 @@ namespace picogc {
   
   inline void gc::_setup_roots(gc_stats& stats)
   {
-    if (roots_ != NULL) {
-      gc_root* root = roots_;
-      do {
-	gc_object* obj = **root;
-	mark(obj);
-	stats.on_stack++;
-      } while ((root = root->next_) != roots_);
-    }
+    // override this function to set roots
   }
   
   inline void gc::trigger_gc()
@@ -496,32 +469,6 @@ namespace picogc {
       *pending_.push() = obj;
   }
   
-  inline void gc::_register(gc_root* root)
-  {
-    if (roots_ == NULL) {
-      root->next_ = root->prev_ = root;
-      roots_ = root;
-    } else {
-      root->next_ = roots_;
-      root->prev_ = roots_->prev_;
-      root->prev_->next_ = root;
-      root->next_->prev_ = root;
-      roots_ = root;
-    }
-  }
-  
-  inline void gc::_unregister(gc_root* root)
-  {
-    if (root->next_ != root) {
-      root->next_->prev_ = root->prev_;
-      root->prev_->next_ = root->next_;
-      if (root == roots_)
-	roots_ = root->next_;
-    } else {
-      roots_ = NULL;
-    }
-  }
-
   inline void* gc_object::operator new(size_t sz)
   {
     return gc::top()->allocate(sz, 0);
