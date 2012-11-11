@@ -81,7 +81,9 @@ namespace picogc {
 	return --cur_;
       }
     };
-    _stack() : node_(new node), reserved_node_(NULL), top_(node_->values) {}
+    _stack() : node_(new node), reserved_node_(NULL), top_(node_->values) {
+      node_->prev = NULL;
+    }
     ~_stack() {
       delete reserved_node_;
       while (node_ != NULL) {
