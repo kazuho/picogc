@@ -48,7 +48,9 @@ namespace picogc {
   
   // external flags
   enum {
-    IS_ATOMIC = 1
+    IS_ATOMIC = 0x1,
+    IMMEDIATELY_TRACEABLE = 0x2,
+    MAY_TRIGGER_GC = 0x4
   };
 
   class gc;
@@ -233,7 +235,7 @@ namespace picogc {
 	emitter_(&globals::default_emitter)
     {}
     ~gc();
-    void* allocate(size_t sz, bool has_gc_members);
+    void* allocate(size_t sz, int flags);
     void trigger_gc();
     void may_trigger_gc();
     void mark(gc_object* obj);
@@ -347,21 +349,30 @@ namespace picogc {
     }
   }
   
-  inline void* gc::allocate(size_t sz, bool has_gc_members)
+  inline void* gc::allocate(size_t sz, int flags)
   {
     bytes_allocated_since_gc_ += sz;
+    if ((flags & MAY_TRIGGER_GC) != 0) {
+      may_trigger_gc();
+    }
     gc_object* p = static_cast<gc_object*>(::operator new(sz));
     // GC might walk through the object during construction
-    if (has_gc_members) {
-      memset(p, 0, sz);
+    if ((flags & IS_ATOMIC) == 0) {
+      memset(static_cast<void*>(p), 0, sz);
     }
     // register to GC list
-    scope* scope = scope_;
-    if (scope->new_head_ == NULL)
-      scope->new_tail_slot_ = &p->next_;
-    p->next_ = reinterpret_cast<intptr_t>(scope->new_head_)
-      | (has_gc_members ? _FLAG_HAS_GC_MEMBERS : 0);
-    scope->new_head_ = p;
+    if ((flags & IMMEDIATELY_TRACEABLE) != 0) {
+      p->next_ = reinterpret_cast<intptr_t>(obj_head_)
+          | ((flags & IS_ATOMIC) != 0 ? 0 : _FLAG_HAS_GC_MEMBERS);
+      obj_head_ = p;
+    } else {
+      scope* scope = scope_;
+      if (scope->new_head_ == NULL)
+        scope->new_tail_slot_ = &p->next_;
+      p->next_ = reinterpret_cast<intptr_t>(scope->new_head_)
+          | ((flags & IS_ATOMIC) != 0 ? 0 : _FLAG_HAS_GC_MEMBERS);
+      scope->new_head_ = p;
+    }
     return p;
   }
   
@@ -513,12 +524,12 @@ namespace picogc {
 
   inline void* gc_object::operator new(size_t sz)
   {
-    return gc::top()->allocate(sz, true /* be pessimistic */);
+    return gc::top()->allocate(sz, 0);
   }
 
   inline void* gc_object::operator new(size_t sz, int flags)
   {
-    return gc::top()->allocate(sz, (flags & IS_ATOMIC) == 0);
+    return gc::top()->allocate(sz, flags);
   }
 
   // only called when an exception is raised within ctor
