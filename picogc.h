@@ -249,9 +249,8 @@ namespace picogc {
       return globals::_top_scope;
     }
   protected:
-    virtual void _setup_roots(gc_stats& stats);
-    void _mark(gc_stats& stats);
-    void _sweep(gc_stats& stats);
+    virtual void _mark(gc_stats& stats);
+    virtual void _sweep(gc_stats& stats);
   };
   
   class gc_object {
@@ -264,6 +263,7 @@ namespace picogc {
     virtual ~gc_object() {}
     virtual void gc_mark(picogc::gc* gc) {}
   public:
+    bool gc_is_marked() const { return (next_ & _FLAG_MARKED) != 0; }
     static void* operator new(size_t sz);
     static void* operator new(size_t sz, int flags);
     static void operator delete(void* p);
@@ -399,11 +399,6 @@ namespace picogc {
     emitter_->sweep_end(this);
   }
   
-  inline void gc::_setup_roots(gc_stats& stats)
-  {
-    // override this function to set roots
-  }
-  
   inline void gc::trigger_gc()
   {
     assert(pending_.empty());
@@ -428,8 +423,6 @@ namespace picogc {
 	stats.on_stack++;
       }
     }
-    // setup root
-    _setup_roots(stats);
     
     // mark
     _mark(stats);
