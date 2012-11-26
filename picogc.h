@@ -360,8 +360,6 @@ namespace picogc {
   
   inline void gc::_mark(gc_stats& stats)
   {
-    emitter_->mark_start(this);
-    
     // mark all the objects
     gc_object** slot;
     while ((slot = pending_.pop()) != NULL) {
@@ -369,14 +367,10 @@ namespace picogc {
       stats.slowly_marked++;
       (*slot)->gc_mark(this);
     }
-    
-    emitter_->mark_end(this);
   }
   
   inline void gc::_sweep(gc_stats& stats)
   {
-    emitter_->sweep_start(this);
-    
     // collect unmarked objects, as well as clearing the mark of live objects
     intptr_t* ref = reinterpret_cast<intptr_t*>(&obj_head_);
     for (gc_object* obj = obj_head_; obj != NULL; ) {
@@ -395,8 +389,6 @@ namespace picogc {
       obj = reinterpret_cast<gc_object*>(next & ~_FLAG_MASK);
     }
     *ref &= _FLAG_HAS_GC_MEMBERS;
-    
-    emitter_->sweep_end(this);
   }
   
   inline void gc::trigger_gc()
@@ -425,9 +417,13 @@ namespace picogc {
     }
     
     // mark
+    emitter_->mark_start(this);
     _mark(stats);
+    emitter_->mark_end(this);
     // sweep
+    emitter_->sweep_start(this);
     _sweep(stats);
+    emitter_->sweep_end(this);
     
     // clear the marks in new (as well as count the number)
     for (scope* scope = scope_; scope != NULL; scope = scope->prev_) {
